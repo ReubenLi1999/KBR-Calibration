@@ -7,6 +7,8 @@ module xml_module
     use strings
     use M_strings, only: split
     use CalendarModule, only: dayOfYear
+    use datetime
+    
     implicit none
 
     type, extends(io_file), public:: xml_file
@@ -183,6 +185,16 @@ contains
         character(len=7)                                        :: c_gsm_dayofyear
         character(len=2)                                        :: c_date_d, c_date_m
         character(len=4)                                        :: c_date_y
+
+        !> datetime
+        type(datetime_type)                                     :: start_epoch, man1, man2, man3, man4
+        type(timedelta_type)                                    :: delta_man1, delta_man2, delta_man3, delta_man4
+
+        !> assign the start epoch for cumulating second
+        start_epoch = datetime(2009, 1, 1, 0, 0, 0)
+        delta_man1 = datetime(2019, 1, 1, 0, 0, 0) - datetime(2000, 1, 1, 11, 59, 47)
+        print *, delta_man1%total_seconds()
+        stop
 
         ! call pyplot_demo
         !> filenames that must appear in the config folder

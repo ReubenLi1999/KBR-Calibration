@@ -293,7 +293,7 @@ contains
         integer(kind=ip)                                     :: i, ios
         real(kind=wp)                                        :: wp_acc_lead(3), wp_acc_trac(3)
         
-        open(unit=output_unit, file='..//temp//acc_grav_calibra.txt', iostat=ios, status="unknown", action="write")
+        open(unit=output_unit, file='..//temp//acc_grav_calibra1.txt', iostat=ios, status="unknown", action="write")
         if ( ios /= 0 ) stop "Error opening file name"
         
         do i = 1, size(self%gps1b_lead), 1
