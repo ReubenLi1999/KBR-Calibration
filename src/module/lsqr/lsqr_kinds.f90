@@ -7,7 +7,7 @@
 
     module lsqr_kinds
 
-    use iso_fortran_env, only: wp => real64  ! double precision kinds
+    use num_kinds_module
 
     implicit none
 

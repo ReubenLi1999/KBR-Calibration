@@ -3,7 +3,6 @@ module num_kinds_module
     use, intrinsic :: iso_fortran_env
 
     implicit none
-
     private
 
     integer, parameter, public :: wp = real128 !! Using "quarble precision" real kinds

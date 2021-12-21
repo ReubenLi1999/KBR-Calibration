@@ -19,9 +19,50 @@ module math_collection_module
     !>          in the future.
     !>----------------------------------------------------------------------------------------------
     
-    real(wp), parameter                         :: pi = atan(1.0_wp) * 4.0_wp
+    real(kind=wp), parameter                         :: pi = atan(1.0_wp) * 4.0_wp
     
 contains
+
+    subroutine date2num(c_date, ip_date)
+        !> input 
+        CHARACTER(len=*)                , INTENT(IN   )                 :: c_date
+        !> output
+        integer(kind=ip), DIMENSION(6)  , intent(  out)                 :: ip_date
+        !> local
+        integer(kind=ip)                                                :: err
+
+        !> year
+        call str2int(c_date(1: 4), ip_date(1), err)
+        if (err /= 0) then
+            call logger%fatal("math_collection_module", "Error opening the folder walker list file")
+        end if
+        !> month
+        call str2int(c_date(6: 7), ip_date(2), err)
+        if (err /= 0) then
+            call logger%fatal("math_collection_module", "Error opening the folder walker list file")
+        end if
+        !> day
+        call str2int(c_date(9: 10), ip_date(3), err)
+        if (err /= 0) then
+            call logger%fatal("math_collection_module", "Error opening the folder walker list file")
+        end if
+        !> hour
+        call str2int(c_date(12: 13), ip_date(4), err)
+        if (err /= 0) then
+            call logger%fatal("math_collection_module", "Error opening the folder walker list file")
+        end if
+        !> minute
+        call str2int(c_date(15: 16), ip_date(5), err)
+        if (err /= 0) then
+            call logger%fatal("math_collection_module", "Error opening the folder walker list file")
+        end if
+        !> second
+        call str2int(c_date(18: 19), ip_date(6), err)
+        if (err /= 0) then
+            call logger%fatal("math_collection_module", "Error opening the folder walker list file")
+        end if
+        
+    end subroutine date2num
 
     pure function second_order_diff(ip_length, ip_overlap) result(wp_coeffs)
         !> input variables
@@ -29,14 +70,14 @@ contains
         !> the length of the second-order differentiator
         integer(kind=ip)                , INTENT(IN   )                 :: ip_overlap
         !> the overlap length
-
+    
         !> output variable
-        real(kind=wp), DIMENSION(0: ip_length)                                     :: wp_coeffs
-
+        real(kind=wp), DIMENSION(0: ip_length)                          :: wp_coeffs
+    
         !> args
         integer(kind=ip)                                                :: n, i, k, j, m
         real(kind=wp)                                                   :: wp_temp1, wp_temp2, wp_temp3
-
+    
         n_loop: do n = 0, ip_length, 1
             if (n /= ip_length) then
                 wp_temp1 = 0.0_wp;
@@ -44,7 +85,7 @@ contains
                     if (m /= n .and. m /= ip_overlap) then
                         wp_temp2 = 1.0_wp
                         k_loop: do k = 0, ip_length, 1
-                            if (k /= m .and. k /= ip_overlap .and. k /= n) wp_temp2 = wp_temp2 * (real(ip_overlap, wp) - real(k, wp)) / (real(n, wp) - real(k, wp))
+                            if (k /= m .and. k /= ip_overlap .and. k /= n) wp_temp2 = wp_temp2 * (real (ip_overlap, wp) - real(k, wp)) / (real(n, wp) - real(k, wp))
                         end do k_loop
                         wp_temp1 = wp_temp1 + wp_temp2 / (real(n, wp) - real(m, wp))
                     end if
@@ -54,29 +95,29 @@ contains
                 wp_temp1 = 0.0_wp
                 wp_temp2 = 0.0_wp
                 wp_temp3 = 0.0_wp
-
+    
                 do k = 1, ip_overlap, 1
                     do m = k + 1, ip_overlap, 1
                         wp_temp1 = wp_temp1 + 1.0_wp / real(m, wp) / real(k, wp)
                     end do
                 end do
-
+    
                 do k = 1, ip_length - ip_overlap, 1
                     do m = k + 1, ip_length - ip_overlap, 1
                         wp_temp2 = wp_temp2 + 1.0_wp / real(m, wp) / real(k, wp)
                     end do
                 end do
-
+    
                 do k = 1, ip_overlap
                     do m = 1, ip_length - ip_overlap
                         wp_temp3 = wp_temp3 + 1.0_wp / real(m, wp) / real(k, wp) 
                     end do
                 end do
-
+    
                 wp_coeffs(n) = 2.0_wp + (wp_temp1 + wp_temp2 - wp_temp3)
             end if
         end do n_loop
-
+    
     end function second_order_diff
 
     function included_angle(wp_vec1, wp_vec2) result(wp_included_angle)
@@ -88,7 +129,7 @@ contains
         wp_included_angle = acos(dot_product(wp_vec1, wp_vec2) / norm2(wp_vec1) / norm2(wp_vec2))
     end function included_angle
 
-    elemental subroutine str2int(str,int,stat)
+    elemental subroutine str2int(str, int, stat)
         ! Arguments
         character(len=*),intent(in) :: str
         integer,intent(out)         :: int
@@ -129,14 +170,15 @@ contains
     function sort(wp_input) result(wp_output)
         !> input
         real(kind=wp)                   , INTENT(IN   )                 :: wp_input(:)
+        !> output
+        real(kind=wp)                                                   :: wp_output(size(wp_input))
         
         !> temp
         real(kind=wp)                                                   :: wp_temp
         real(kind=wp)                                                   :: wp_temp_array(size(wp_input))
         integer(kind=ip)                                                :: ip_j, ip_k
         
-        !> output
-        real(kind=wp)                                                   :: wp_output(size(wp_input))
+        
         
         wp_temp_array = wp_input
         do ip_j = 1, ubound(wp_temp_array, 1) - 1

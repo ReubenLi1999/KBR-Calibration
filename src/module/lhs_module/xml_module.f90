@@ -7,7 +7,7 @@ module xml_module
     use strings
     use M_strings, only: split
     use CalendarModule, only: dayOfYear
-    use datetime
+    use datetime_wrapper
     
     implicit none
 
@@ -170,6 +170,7 @@ contains
         integer(kind=ip)                                        :: i_index_gsm
         integer(kind=ip)                                        :: i_date_d, i_date_m, i_date_y
         integer(kind=ip)                                        :: i_start_epoch, i_duration
+        integer(kind=ip)                                        :: i_date_num(6)
         integer(kind=ip), INTENT(  OUT)                         :: i_maneuver_time(8)
         character(len=3000)                                     :: temp1, temp2, temp3, flag
         character(len=3000)                                     :: c_temp2, c_temp3, c_start_epoch, c_duration
@@ -191,10 +192,7 @@ contains
         type(timedelta_type)                                    :: delta_man1, delta_man2, delta_man3, delta_man4
 
         !> assign the start epoch for cumulating second
-        start_epoch = datetime(2009, 1, 1, 0, 0, 0)
-        delta_man1 = datetime(2019, 1, 1, 0, 0, 0) - datetime(2000, 1, 1, 11, 59, 47)
-        print *, delta_man1%total_seconds()
-        stop
+        start_epoch = create_datetime(2009, 1, 1, 0, 0, 0)
 
         ! call pyplot_demo
         !> filenames that must appear in the config folder
@@ -246,7 +244,11 @@ contains
                 right(1) = index(temp1, ">")
                 right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
                 !> version
-                call str2int(temp1(right(1) + 1: left(2) - 1), i_start_epoch, err)
+                call date2num(temp1(right(1) + 1: left(2) - 1), i_date_num)
+                man1 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
+                                       i_date_num(5), i_date_num(6))
+                delta_man1 = man1 - start_epoch
+                i_start_epoch = delta_man1%total_seconds()
                 i_maneuver_time(1) = i_start_epoch + 18_ip
             end if
             if (index(temp1, "<ManeuverDuration-1>") /= 0) then
@@ -267,7 +269,11 @@ contains
                 right(1) = index(temp1, ">")
                 right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
                 !> version
-                call str2int(temp1(right(1) + 1: left(2) - 1), i_start_epoch, err)
+                call date2num(temp1(right(1) + 1: left(2) - 1), i_date_num)
+                man2 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
+                                       i_date_num(5), i_date_num(6))
+                delta_man2 = man2 - start_epoch
+                i_start_epoch = delta_man2%total_seconds()
                 i_maneuver_time(3) = i_start_epoch + 18_ip
             end if
             if (index(temp1, "<ManeuverDuration-2>") /= 0) then
@@ -288,7 +294,11 @@ contains
                 right(1) = index(temp1, ">")
                 right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
                 !> version
-                call str2int(temp1(right(1) + 1: left(2) - 1), i_start_epoch, err)
+                call date2num(temp1(right(1) + 1: left(2) - 1), i_date_num)
+                man3 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
+                                       i_date_num(5), i_date_num(6))
+                delta_man3 = man3 - start_epoch
+                i_start_epoch = delta_man3%total_seconds()
                 i_maneuver_time(5) = i_start_epoch + 18_ip
             end if
             if (index(temp1, "<ManeuverDuration-3>") /= 0) then
@@ -309,7 +319,11 @@ contains
                 right(1) = index(temp1, ">")
                 right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
                 !> version
-                call str2int(temp1(right(1) + 1: left(2) - 1), i_start_epoch, err)
+                call date2num(temp1(right(1) + 1: left(2) - 1), i_date_num)
+                man4 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
+                                       i_date_num(5), i_date_num(6))
+                delta_man4 = man4 - start_epoch
+                i_start_epoch = delta_man4%total_seconds()
                 i_maneuver_time(7) = i_start_epoch + 18_ip
             end if
             if (index(temp1, "<ManeuverDuration-4>") /= 0) then

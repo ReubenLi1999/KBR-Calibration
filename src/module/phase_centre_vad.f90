@@ -220,13 +220,13 @@ module phase_centre_vad
         !> initialise the class
         procedure, NON_OVERRIDABLE, public                   :: destructor                       => destructor
         !> destruct the class
-        procedure, NON_OVERRIDABLE, PUBLIC                   :: trajectory_forward               => trajectory_forward
+        ! procedure, NON_OVERRIDABLE, PUBLIC                   :: trajectory_forward               => trajectory_forward
         !> subroutine to perform the forward problem for certain satellite's tracjetory
         procedure, NON_OVERRIDABLE, PUBLIC                   :: create_phase_centre_vad_eq       => create_phase_centre_vad_eq
         !> using SCA1B, GNI1B, KBR1B and some other data to create the equation for solving the antenna offset vector
         procedure, NON_OVERRIDABLE, PUBLIC                   :: solve_phase_centre_vad_eq        => solve_phase_centre_vad_eq
         !> using least-square filtering to solve the problem in the time domain
-        procedure, NON_OVERRIDABLE, PUBLIC                   :: solve_phase_centre_vad_eq_freq   => solve_phase_centre_vad_eq_freq
+        ! procedure, NON_OVERRIDABLE, PUBLIC                   :: solve_phase_centre_vad_eq_freq   => solve_phase_centre_vad_eq_freq
         !> using least-square filtering to solve the problem in the frequency domain
         procedure, NON_OVERRIDABLE, PUBLIC                   :: solve_phase_centre_vad_eq_stitch => solve_phase_centre_vad_eq_stitch
         !> using least-square filtering to solve the problem in the time domain with data stitched
@@ -245,6 +245,7 @@ module phase_centre_vad
         procedure, NON_OVERRIDABLE, PUBLIC                   :: solver_dynamics                  => solver_dynamics
         !> in the case that the POD data contains periodic signal with the same period as the maneuver signal, the aforementioned solvers
         !> will collapse.
+        procedure, NON_OVERRIDABLE, PUBLIC                   :: assert_maneuver                  => assert_maneuver
     end type satellite
     
     type, extends(ddeabm_with_event_class) :: spacecraft
@@ -277,6 +278,25 @@ module phase_centre_vad
     type(spacecraft)                                         :: lead, trac
 
 contains
+
+    subroutine assert_maneuver(self, i_maneuver_time)
+        class(satellite)                , intent(inout)      :: self
+
+        integer(kind=ip), DIMENSION(:)  , INTENT(IN   )      :: i_maneuver_time
+
+        if (any(i_maneuver_time < self%kbr1b_both(1)%gpst_kbr1b)) then
+            call logger%error('phase_centre_vad', "Maneuver time error")
+            call xml_o%xml2file(1, "Maneuver time error")
+            stop
+        end if
+
+        if (any(i_maneuver_time > self%kbr1b_both(size(self%kbr1b_both))%gpst_kbr1b)) then
+            call logger%error('phase_centre_vad', "Maneuver time error")
+            call xml_o%xml2file(1, "Maneuver time error")
+            stop
+        end if
+
+    end subroutine assert_maneuver
 
     subroutine solver_dynamics(self)
         class(satellite)                , intent(inout)      :: self
@@ -510,83 +530,83 @@ contains
         
     end subroutine solve_phase_centre_vad_eq_stitch
 
-    subroutine solve_phase_centre_vad_eq_freq(self, motor_id)
-        class(satellite)     , INTENT(INOUT)              :: self
-        !> input variables
-        integer(kind=ip)          , INTENT(IN   )         :: motor_id
-        
-        complex(dpfft)                                    :: data_fft(size(self%kbr1b_both)), temp(8)
-        real(kind=wp)                                     :: amp(size(self%kbr1b_both) / 2), freq(size(self%kbr1b_both) / 2)
-        real(kind=wp)                                     :: model_matrix(2, 2), data_vector(2), res(2)
-        integer(kind=ip)                                  :: i, fwd = 0, index_f1, index_f2, istat
-        type(c_ptr)                                       :: plan
-        real(c_double)                                    :: input(size(self%kbr1b_both))
-        COMPLEX(c_double_complex)                         :: output(size(self%kbr1b_both) / 2 + 1)
-        type(pyplot)                                      :: plt
-        
-        
-        !> fft the data vector
-        data_fft = self%kbr1b_both%eq_b
-        !> fft using FFTW
-        !> the result in the frequency domain is the same as one calculated from MATLAB,
-        !>------------------------------------------------------------------------------------------
-        !> Note that result calculated by codes from Google and Gitub can not reach the standard or
-        !> they are false to be frank. Because the algorithm they use is radix-2 one, and the
-        !> algorithm used by FFTW can handle the arbitary-length input data problem.
-        !>------------------------------------------------------------------------------------------
-        temp = [1.0_dpfft, 1.0_dpfft, 1.0_dpfft, 1.0_dpfft, 0.0_dpfft, 0.0_dpfft, 0.0_dpfft, 0.0_dpfft]
-        !> linux fftw using MKL
-        !plan = fftw_plan_dft_r2c_1d(size(input), input, output, FFTW_ESTIMATE+FFTW_UNALIGNED)
-        !call fftw_execute_dft_r2c(plan, input, output)
-
-        !> windows fftw using MKL
-        !call dfftw_plan_dft_1d(fwd, size(data_fft), data_fft, data_fft, FFT_Forward, FFTW_ESTIMATE)
-        !call dfftw_execute(fwd)
-        !call dfftw_plan_dft_1d(fwd, 8, temp, temp, FFT_Forward, FFTW_ESTIMATE)
-        !call dfftw_execute(fwd)
-        
-        !print *, temp
-        !stop
-        amp = 2.0_wp / real(size(data_fft), wp) * abs(data_fft)
-        freq = 0.2_wp / real(size(self%kbr1b_both), wp) * arange(0.0_wp, 100.0_wp, 1.0_wp)
-        call plt%initialize()
-        call plt%add_plot(freq, amp, xscale='log', yscale='log', label='$\sin(x)$',istat=istat, linestyle='-')
-        call plt%savefig('sinx.png', pyfile='sinx.py', ismat=.true., istat=istat)
-        !> search the frequency domain to extract the amplitude at 1/250Hz and 2/250Hz
-        index_f1 = 1_ip
-        index_f2 = 1_ip
-        extract_amp_loop: do i = 1, size(amp), 1
-            if (isequal(freq(i), 1.0_wp / 250.0_wp)) index_f1 = i
-            if (isequal(freq(i), 2.0_wp / 250.0_wp)) index_f2 = i
-        end do extract_amp_loop
-
-        !> plot session
-        ! call plt%title("The 1st motivation (1: 200)")
-        ! call plt%xlabel("Frequency [Hz]")
-        ! call plt%ylabel("Amplitude [m]")
-        ! call plt%options("set grid xtics ytics mxtics")
-        ! call plt%loglog(freq, amp)
-        
-        !> Semi-analytic method to solve the linear inverse problem Ax=b
-        !> 1st step: create the model matrix A
-        model_matrix(1, 1) =  (deg2rad(1.0_wp)**2 / 4.0_wp * cos(deg2rad(2.0_wp)))
-        model_matrix(1, 2) = -(deg2rad(1.0_wp)**2 / 4.0_wp * sin(deg2rad(2.0_wp)))
-        model_matrix(2, 1) =   deg2rad(1.0_wp) * sin(deg2rad(2.0_wp))
-        model_matrix(2, 2) =   deg2rad(1.0_wp) * cos(deg2rad(2.0_wp))
-        
-        !> 2nd step: create the date vector
-        data_vector(1) = amp(index_f2); data_vector(2) = amp(index_f1)
-        
-        !> 3rd step: solve this linear inverse problem
-        res = ls_solver(model_matrix, data_vector)
-        !print *, data_vector
-        !print *, "--"
-        !print *, model_matrix
-        !print *, "--"
-        print *, res
-        !stop
-        
-    end subroutine solve_phase_centre_vad_eq_freq
+    ! subroutine solve_phase_centre_vad_eq_freq(self, motor_id)
+    !     class(satellite)     , INTENT(INOUT)              :: self
+    !     !> input variables
+    !     integer(kind=ip)          , INTENT(IN   )         :: motor_id
+    !     
+    !     complex(dpfft)                                    :: data_fft(size(self%kbr1b_both)), temp(8)
+    !     real(kind=wp)                                     :: amp(size(self%kbr1b_both) / 2), freq(size! (self%kbr1b_both) / 2)
+    !     real(kind=wp)                                     :: model_matrix(2, 2), data_vector(2), res(2)
+    !     integer(kind=ip)                                  :: i, fwd = 0, index_f1, index_f2, istat
+    !     type(c_ptr)                                       :: plan
+    !     real(c_double)                                    :: input(size(self%kbr1b_both))
+    !     COMPLEX(c_double_complex)                         :: output(size(self%kbr1b_both) / 2 + 1)
+    !     type(pyplot)                                      :: plt
+    !     
+    !     
+    !     !> fft the data vector
+    !     data_fft = self%kbr1b_both%eq_b
+    !     !> fft using FFTW
+    !     !> the result in the frequency domain is the same as one calculated from MATLAB,
+    !     !>------------------------------------------------------------------------------------------
+    !     !> Note that result calculated by codes from Google and Gitub can not reach the standard or
+    !     !> they are false to be frank. Because the algorithm they use is radix-2 one, and the
+    !     !> algorithm used by FFTW can handle the arbitary-length input data problem.
+    !     !>------------------------------------------------------------------------------------------
+    !     temp = [1.0_dpfft, 1.0_dpfft, 1.0_dpfft, 1.0_dpfft, 0.0_dpfft, 0.0_dpfft, 0.0_dpfft, 0.0_dpfft]
+    !     !> linux fftw using MKL
+    !     !plan = fftw_plan_dft_r2c_1d(size(input), input, output, FFTW_ESTIMATE+FFTW_UNALIGNED)
+    !     !call fftw_execute_dft_r2c(plan, input, output)
+    ! 
+    !     !> windows fftw using MKL
+    !     !call dfftw_plan_dft_1d(fwd, size(data_fft), data_fft, data_fft, FFT_Forward, FFTW_ESTIMATE)
+    !     !call dfftw_execute(fwd)
+    !     !call dfftw_plan_dft_1d(fwd, 8, temp, temp, FFT_Forward, FFTW_ESTIMATE)
+    !     !call dfftw_execute(fwd)
+    !     
+    !     !print *, temp
+    !     !stop
+    !     amp = 2.0_wp / real(size(data_fft), wp) * abs(data_fft)
+    !     freq = 0.2_wp / real(size(self%kbr1b_both), wp) * arange(0.0_wp, 100.0_wp, 1.0_wp)
+    !     call plt%initialize()
+    !     call plt%add_plot(freq, amp, xscale='log', yscale='log', label='$\sin(x)$',istat=istat, ! linestyle='-')
+    !     call plt%savefig('sinx.png', pyfile='sinx.py', ismat=.true., istat=istat)
+    !     !> search the frequency domain to extract the amplitude at 1/250Hz and 2/250Hz
+    !     index_f1 = 1_ip
+    !     index_f2 = 1_ip
+    !     extract_amp_loop: do i = 1, size(amp), 1
+    !         if (isequal(freq(i), 1.0_wp / 250.0_wp)) index_f1 = i
+    !         if (isequal(freq(i), 2.0_wp / 250.0_wp)) index_f2 = i
+    !     end do extract_amp_loop
+    ! 
+    !     !> plot session
+    !     ! call plt%title("The 1st motivation (1: 200)")
+    !     ! call plt%xlabel("Frequency [Hz]")
+    !     ! call plt%ylabel("Amplitude [m]")
+    !     ! call plt%options("set grid xtics ytics mxtics")
+    !     ! call plt%loglog(freq, amp)
+    !     
+    !     !> Semi-analytic method to solve the linear inverse problem Ax=b
+    !     !> 1st step: create the model matrix A
+    !     model_matrix(1, 1) =  (deg2rad(1.0_wp)**2 / 4.0_wp * cos(deg2rad(2.0_wp)))
+    !     model_matrix(1, 2) = -(deg2rad(1.0_wp)**2 / 4.0_wp * sin(deg2rad(2.0_wp)))
+    !     model_matrix(2, 1) =   deg2rad(1.0_wp) * sin(deg2rad(2.0_wp))
+    !     model_matrix(2, 2) =   deg2rad(1.0_wp) * cos(deg2rad(2.0_wp))
+    !     
+    !     !> 2nd step: create the date vector
+    !     data_vector(1) = amp(index_f2); data_vector(2) = amp(index_f1)
+    !     
+    !     !> 3rd step: solve this linear inverse problem
+    !     res = ls_solver(model_matrix, data_vector)
+    !     !print *, data_vector
+    !     !print *, "--"
+    !     !print *, model_matrix
+    !     !print *, "--"
+    !     print *, res
+    !     !stop
+    !     
+    ! end subroutine solve_phase_centre_vad_eq_freq
 
     subroutine divide_jd(self, jd_i, index_span)
         class(satellite)     , intent(inout)              :: self
@@ -1399,322 +1419,322 @@ contains
         jdtt = (gpst + 19.0_wp + 32.184_wp) / 86400.0_wp + 2451545.0_wp
     end subroutine gpst2jdtt
 
-    subroutine trajectory_forward(self, i_index_motiv)
-        class(satellite)     , intent(inout)                 :: self
-        integer(kind=ip)     , INTENT(IN   ), OPTIONAL       :: i_index_motiv
-
-        integer(kind=ip), parameter                          :: n      = 6_ip
-        !> number of state variables
-        real(kind=wp)   , parameter                          :: tol    = 1.0e-14_wp
-        !> event location tolerance 
-        integer(kind=ip)                                     :: idid, i, err, j, ios
-        character(len=1)                                     :: c_index_motiv
-        !> -----------------------------------------------------------------------------------------
-
-        !> convert gpst in acc1b to jdtt
-        call gpst2jdtt(self%acc1b_lead%gpst_acc1b, self%acc1b_lead%jdtt)
-        !> check whether the initial epoches of KBR1B and GNI1B are the same or not
-        if (.not. isequal(self%gps1b_lead(1)%gpst_gps1b, self%gps1b_trac(1)%gpst_gps1b)) then
-            call logger%error('phase_centre_vad', 'the initial time of GNI1B_C and GNI1B_D are not the same')
-            call xml_o%xml2file(1, "the initial time of GNI1B_A and GNI1B_B are not the same")
-            stop
-        end if
-
-        if (.not. isequal(self%gps1b_lead(1)%gpst_gps1b, self%kbr1b_both(1)%gpst_kbr1b)) then
-            call logger%error('phase_centre_vad', 'the initial time of GNI1B_C and KBR1B are not the same')
-            call xml_o%xml2file(1, "the initial time of GNI1B_A and GNI1B_B are not the same")
-            stop
-        end if
-
-        !> raise information
-        write(c_index_motiv, "(i1)") i_index_motiv
-        call logger%info('phase_centre_vad', 'starting to simulate trajectories for both satellites of Motivation '//c_index_motiv)
-
-        !> simulate the trajectory
-        call lead%initialize(n, maxnum=500000_ip, df=twobody, rtol=[1.0e-14_wp], atol=[1.0e-14_wp], report=twobody_report)
-        call trac%initialize(n, maxnum=500000_ip, df=twobody, rtol=[1.0e-14_wp], atol=[1.0e-14_wp], report=twobody_report)
-        !> transfer the initial epoch in gps time to julian date
-        !> leadig satellite
-        call gpst2jdtt(self%gps1b_lead(1)%gpst_gps1b, lead%date)
-        !> tracking satellite
-        call gpst2jdtt(self%gps1b_trac(1)%gpst_gps1b, trac%date)
-        !> assign non-gravitational acceleration
-        allocate(lead%acc_non_grav_gcrs(size(self%acc1b_lead), 3), stat=err)
-        if (err /= 0) print *, "lead%acc_non_grav_gcrs: Allocation request denied"
-        allocate(trac%acc_non_grav_gcrs(size(self%acc1b_lead), 3), stat=err)
-        if (err /= 0) print *, "trac%acc_non_grav_gcrs: Allocation request denied"
-        
-        acc_srf2gcrs_loop: do i = 1, size(self%acc1b_lead), 1
-            !> convert non-gravitational acceleration in SRF to the inertial frame
-            lead%acc_non_grav_gcrs(i, :) = matmul(self%sca1b_lead(i)%rotm_s2i, self%acc1b_lead(i)%non_grav_acc)
-            trac%acc_non_grav_gcrs(i, :) = matmul(self%sca1b_trac(i)%rotm_s2i, self%acc1b_trac(i)%non_grav_acc)
-            !> factor the non-gravitational acceleration
-            factor_acc_loop: do j = 1, 3, 1
-                lead%acc_non_grav_gcrs(i, j) = lead%acc_non_grav_gcrs(i, j) * self%bf_lead(i) + self%af_lead(i)
-                trac%acc_non_grav_gcrs(i, j) = trac%acc_non_grav_gcrs(i, j) * self%bf_trac(i) + self%af_trac(i)
-            end do factor_acc_loop
-        end do acc_srf2gcrs_loop
-        !> -------end of transformation-------
-
-        !> leading satellite
-        call lead%first_call()
-        !> make sure the interval and the final epoch
-        lead%dt = self%kbr1b_both(2)%gpst_kbr1b - self%kbr1b_both(1)%gpst_kbr1b
-        lead%tf = self%kbr1b_both(size(self%kbr1b_both))%gpst_kbr1b - self%kbr1b_both(1)%gpst_kbr1b
-        ! lead%tf = 86400.0_wp
-        call lead%integrate(lead%t0, self%gps1b_lead(1)%pos_i, lead%tf, idid=idid, integration_mode=2, tstep=lead%dt)
-        !> th%kbr1b_both%pos_i_kbr is obtained from the report subroutine
-        do i = 1, size(self%kbr1b_both), 1
-            do j = 1, 3, 1
-                self%kbr1b_both(i)%pos_i_lead(j) = th%kbr1b_both(i)%pos_i_kbr(j)
-            end do
-        end do
-        call logger%info('phase_centre_vad', 'the trajectory simulation of Motivation '//c_index_motiv//' of the leading satellite is done')
-        !> -------end of leading satellite-------
-
-        !> tracking satellite
-        call trac%first_call()
-        !> make sure the interval and the final epoch
-        trac%dt = self%kbr1b_both(2)%gpst_kbr1b - self%kbr1b_both(1)%gpst_kbr1b
-        trac%tf = self%kbr1b_both(size(self%kbr1b_both))%gpst_kbr1b - self%kbr1b_both(1)%gpst_kbr1b
-        ! trac%tf = 86400.0_wp
-        call trac%integrate(trac%t0, self%gps1b_trac(1)%pos_i, trac%tf, idid=idid, integration_mode=2, tstep=trac%dt)
-        !> th%kbr1b_both%pos_i_kbr is obtained from the report subroutine
-        do i = 1, size(self%kbr1b_both), 1
-            do j = 1, 3, 1
-                self%kbr1b_both(i)%pos_i_trac(j) = th%kbr1b_both(i)%pos_i_kbr(j)
-            end do
-        end do
-        call logger%info('phase_centre_vad', 'the trajectory simulation of Motivation '//c_index_motiv//' of the tracking satellite is done')
-        !> -------end of tracking satellite-------
-
-        !> necessary deallocate
-        if (allocated(trac%acc_non_grav_gcrs)) deallocate(trac%acc_non_grav_gcrs, stat=err)
-        if (err /= 0) print *, "trac%acc_non_grav_gcrs: Deallocation request denied"
-        if (allocated(lead%acc_non_grav_gcrs)) deallocate(lead%acc_non_grav_gcrs, stat=err)
-        if (err /= 0) print *, "lead%acc_non_grav_gcrs: Deallocation request denied"
-        
-        !> delete
-        ! open(unit=588, file='..//output//inertial_trajectory_2019-01-01_C_0411.txt', iostat=ios, status="old", action="write")
-        ! if ( ios /= 0 ) stop "Error opening file name"
-        ! open(unit=899, file='..//output//inertial_trajectory_2019-01-01_D_0411.txt', iostat=ios, status="old", action="write")
-        ! if ( ios /= 0 ) stop "Error opening file name"
-        ! 
-        ! do i = 1, size(self%kbr1b_both), 1
-        !     write(588, '(4f30.15)') self%kbr1b_both(i)%gpst_kbr1b, self%kbr1b_both(i)%pos_i_lead
-        !     write(899, '(4f30.15)') self%kbr1b_both(i)%gpst_kbr1b, self%kbr1b_both(i)%pos_i_trac
-        ! end do
-        ! 
-        ! close(unit=588, iostat=ios)
-        ! if ( ios /= 0 ) stop "Error closing file unit 588"
-        ! close(unit=899, iostat=ios)
-        ! if ( ios /= 0 ) stop "Error closing file unit 899"
-        !> delete
-        
-    end subroutine trajectory_forward
-
-    subroutine twobody(me, t_in, x_in, xdot)
-        !! derivative routine for two-body orbit propagation
-        implicit none
-        class(ddeabm_class), intent(inout)           :: me
-        real(kind=wp)           , intent(in   )      :: t_in
-        real(kind=wp)           , intent(in   )      :: x_in(:)
-        real(kind=wp)           , intent(  out)      :: xdot(:)
-        real(kind=wp)                                :: residual_date
-        integer(kind = 4)                            :: record_num
-        real(kind = 8)                               :: RM_w(3,3)
-        real(kind = 16)                              :: DUT1
-        real(kind = 8)                               :: Position_sun(6)
-        real(kind = 8)                               :: Position_moon(6)
-        real(kind = 16)                              :: P_sun(6)
-        real(kind = 16)                              :: P_moon(6)
-        real(kind = 16)                              :: acc_solid_earth(3)
-    
-        real(kind = 8)                               :: gamma
-        real(kind = 8)                               :: beta
-        real(kind=wp)                                     :: acc_non_grav(3)
-        real(dp)                                     :: gcrs2itrs(3, 3)
-        real(dp)                                     :: itrs2gcrs(3, 3)
-        real(dp)                                     :: time_8
-
-        real(kind=wp)                                :: au = 149597870700.0_wp
-        integer(kind=ip)                             :: i, err
-
-        gamma = 1.0_wp
-        beta = 1.0_wp
-
-        residual_date = t_in / 86400.0_wp
-
-        select type (me)
-        class is (spacecraft)
-
-            !> llocate(z_f(1), stat=err)
-            !> f (err /= 0) print *, "z_f: Allocation request denied"
-            !> _f(1)%name = './/input//GRACE_A_correct_2012-06-01.txt'
-            !> _f(1)%nheader = 0
-            !> _f(1)%unit = 256
-            !> pen(unit=z_f(1)%unit, file=z_f(1)%name, iostat=ios, status="old", action="read")
-            !> f ( ios /= 0 ) stop "Error opening file name"
-
-            !> _f(1)%nrow = get_file_n(z_f(1)%unit)
-            !> ead_data_loop: do i = 1, z_f(1)%nrow, 1
-            !>    read(z_f(1)%unit, *) me%non_grav(i, 1), me%non_grav(i, 2: 4)
-            !>    me%non_grav(i, 1) = gpst2jdtt(s%non_grav(i, 1))
-            !> nd do read_data_loop
-
-            !> lose(unit=z_f(1)%unit, iostat=ios)
-            !> f ( ios /= 0 ) stop "Error closing file unit z_f"
-
-            !> f (allocated(z_f)) deallocate(z_f, stat=err)
-            !> f (err /= 0) print *, "z_f: Deallocation request denied"
-            
-            time_8 = me%date + residual_date
-            record_num = int((me%tf - me%t0) / me%dt + 1)
-
-            gl%r_inertial = x_in(1: 3)
-            gl%v_inertial = x_in(4: 6)
-
-            call gcrs_itrs_m05(2_ip, [time_8], itrs2gcrs)
-            call gcrs_itrs_m05(1_ip, [time_8], gcrs2itrs)
-            gl%r_earth = matmul(gcrs2itrs, gl%r_inertial)
-            !10: moon
-            !11: sun
-            call PLEPH ( time_8, 10, 3, Position_moon )
-            call PLEPH ( time_8, 11, 3, Position_sun  )
-            P_sun  = Position_sun
-            P_moon = Position_moon
-            p_sun(4: 6) = matmul(gcrs2itrs, p_sun(1: 3))
-            P_moon(4: 6) = matmul(gcrs2itrs, P_moon(1: 3))
-            call solid_tide_M04(1, [me%date + residual_date], gl%r_earth, p_sun(4: 6) * au, P_moon(4: 6) * au, acc_solid_earth)
-            gl%acc_solid_inertial = matmul(itrs2gcrs, acc_solid_earth)
-
-            !> acceleration due to the third body
-            call ThirdBodyPerturbation_M06(1_ip, p_sun(4: 6) * au, p_moon(4: 6) * au, gl%r_inertial, gl%acc_thre_inertial)
-
-            ! calculate the gravitional accelaration in the earth-fixed system
-            call accxyz(gl%r_earth, gl%acc_grav_earth, me%degree, th%cs_coeffs%c_coeffs, th%cs_coeffs%s_coeffs)
-
-            gl%acc_grav_inertial = matmul(itrs2gcrs, gl%acc_grav_earth)
-
-            !! interpolation nongravtational
-            ! acc_non_grav = 0.0_wp
-            ! acc_non_grav(1) = linear_interp(me%non_grav(:, 1), me%non_grav(:, 2), real(me%date + residual_date, wp))
-            ! acc_non_grav(2) = linear_interp(me%non_grav(:, 1), me%non_grav(:, 3), real(me%date + residual_date, wp))
-            ! acc_non_grav(3) = linear_interp(me%non_grav(:, 1), me%non_grav(:, 4), real(me%date + residual_date, wp))
-
-            !> non-gravitational acceleration in the inertial frame
-            interp_acc_gcrs_loop: do i = 1, 3, 1
-                gl%acc_non_grav(i) = linear_interp(th%acc1b_lead%jdtt, me%acc_non_grav_gcrs(:, i), me%date + residual_date)
-            end do interp_acc_gcrs_loop
-
-            xdot(1: 3) = gl%v_inertial
-            xdot(4: 6) = gl%acc_grav_inertial! + gl%acc_thre_inertial + gl%acc_solid_inertial + gl%acc_non_grav
-
-            ! write(*,'(*(F30.15, 1X))') t , gl%r_earth, gl%acc_grav_inertial + gl%acc_rela_inertial
-            me%fevals = me%fevals + 1
-
-        end select
-    end subroutine twobody
-    !***********************************************************************************************
-    !***********************************************************************************************
-    subroutine twobody_report(me, t_in, x_in)
-        !! report function - write time, state to console
-        implicit none
-        class(ddeabm_class), intent(inout)          :: me
-        real(kind=wp)           , intent(in   )     :: t_in
-        real(kind=wp)           , intent(in   )     :: x_in(:)
-        real(kind=wp), allocatable                  :: c_coef(:, :)
-        real(kind=wp), allocatable                  :: s_coef(:, :)
-        character(len = 80)                         :: output_file
-        character(len = 80)                         :: earth_fixed_coor
-        character(len = 80)                         :: potential_file
-        character(len = 80)                         :: RM_file
-        integer(kind = 8)                           :: file_unit_report
-        integer(kind = 8)                           :: file_unit_earth
-        integer(kind = 8)                           :: file_unit_potential
-        integer(kind = 8)                           :: file_unit_RM
-        real(kind = 8)                              :: RM_w(3,3)
-        real(kind = 16)                             :: DUT1
-        double precision                            :: residual_date
-        character(len = 100)                        :: suffix
-        real(dp)                                    :: gcrs2itrs(3, 3)
-        real(dp)                                    :: time_8
-
-        integer(kind=ip)                            :: counter = 1_ip
-
-
-        !suffix = '_60L_M2.txt'
-        !residual_date = t_in / 86400.0
-        !file_unit_report = 333
-        !output_file = '../output/B-report.txt'
-        !file_unit_earth = 67
-        !earth_fixed_coor = 'output/A-coordinates_earth_fixed_system'//suffix
-        !file_unit_potential = 96
-        !potential_file = 'output/A-potential'//suffix
-        !file_unit_RM = 117
-        !RM_file = 'output/RM'//suffix
-
-        select type (me)
-        class is (spacecraft)
-            time_8 = me%date + residual_date
-
-            !allocate(c_coef(0: me%degree, 0: me%degree), s_coef(0: me%degree, 0: me%degree))
-
-            if (me%first) then  !print header
-                !open(file_unit_report, file=output_file, status='replace')
-                !open(file_unit_earth, file=earth_fixed_coor, status='replace')
-                !open(file_unit_potential, file=potential_file, status='replace')
-                !open(file_unit_RM, file=RM_file, status='replace')
-
-                !write(file_unit_report, '(*(A15, 1X))') 'time (sec)', 'x (m)', 'y (m)', 'z (m)'
-                !write(file_unit_earth, '(*(A15, 1x))') 'x y z'
-                !write(file_unit_potential, *) 'potential'
-
-                me%first = .false.
-
-                !close(file_unit_report)
-                !close(file_unit_earth)
-                !close(file_unit_potential)
-                !close(file_unit_RM)
-            end if
-
-            !open(file_unit_report, file=output_file, status='old', access='append')
-            !open(file_unit_earth, file=earth_fixed_coor, status='old', access='append')
-            !open(file_unit_potential, file=potential_file, status='old', access='append')
-            !open(file_unit_RM, file=RM_file, status='old', access='append')
-
-            ! Print t and x vector
-            !write(file_unit_report, '(*(f40.20, 1x))') me%date + residual_date, x_in
-            me%final_state = x_in
-
-            ! print the positions in
-            !if (me%w_time) then
-            !    call ITRSandGCRS_P(1, me%date, residual_date, 37, x_in(1: 3), gl%r_earth, RM_w, DUT1)
-            !end if
-            !call gcrs_itrs_m05(1_ip, [time_8], gcrs2itrs)
-            !gl%r_earth = matmul(gcrs2itrs, x_in(1: 3))
-            !write(file_unit_earth, '(*(F30.15, 1X))') me%date + residual_date, gl%r_earth
-            !write(file_unit_RM, '(*(F30.15, 1X))') me%date + residual_date, RM_w(1,:), RM_w(2,:), RM_w(3,:)
-
-            ! print potential
-            !call ReadCS(C_coef, S_coef, me%degree)
-            !call process(C_coef, S_coef, me%degree + 1, gl%r_earth, 0, me%degree, gl%potential)
-            !write(file_unit_potential, *) gl%potential
-
-            ! write(*,'(*(F30.15, 1X))') t_in , gl%r_earth, gl%acc_grav_inertial + gl%acc_rela_inertial
-            !close(file_unit_report)
-            !close(file_unit_earth)
-            !close(file_unit_potential)
-            !close(file_unit_RM)
-
-            !deallocate(c_coef)
-            !deallocate(s_coef)
-
-            th%kbr1b_both(counter)%pos_i_kbr = x_in(1: 3)
-            counter = counter + 1_ip
-            if (counter > (me%tf / me%dt + 1.0_wp)) counter = 1_ip
-        end select
-    end subroutine twobody_report
+    ! subroutine trajectory_forward(self, i_index_motiv)
+    !     class(satellite)     , intent(inout)                 :: self
+    !     integer(kind=ip)     , INTENT(IN   ), OPTIONAL       :: i_index_motiv
+! 
+    !     integer(kind=ip), parameter                          :: n      = 6_ip
+    !     !> number of state variables
+    !     real(kind=wp)   , parameter                          :: tol    = 1.0e-14_wp
+    !     !> event location tolerance 
+    !     integer(kind=ip)                                     :: idid, i, err, j, ios
+    !     character(len=1)                                     :: c_index_motiv
+    !     !> -----------------------------------------------------------------------------------------
+! 
+    !     !> convert gpst in acc1b to jdtt
+    !     call gpst2jdtt(self%acc1b_lead%gpst_acc1b, self%acc1b_lead%jdtt)
+    !     !> check whether the initial epoches of KBR1B and GNI1B are the same or not
+    !     if (.not. isequal(self%gps1b_lead(1)%gpst_gps1b, self%gps1b_trac(1)%gpst_gps1b)) then
+    !         call logger%error('phase_centre_vad', 'the initial time of GNI1B_C and GNI1B_D are not the same')
+    !         call xml_o%xml2file(1, "the initial time of GNI1B_A and GNI1B_B are not the same")
+    !         stop
+    !     end if
+! 
+    !     if (.not. isequal(self%gps1b_lead(1)%gpst_gps1b, self%kbr1b_both(1)%gpst_kbr1b)) then
+    !         call logger%error('phase_centre_vad', 'the initial time of GNI1B_C and KBR1B are not the same')
+    !         call xml_o%xml2file(1, "the initial time of GNI1B_A and GNI1B_B are not the same")
+    !         stop
+    !     end if
+! 
+    !     !> raise information
+    !     write(c_index_motiv, "(i1)") i_index_motiv
+    !     call logger%info('phase_centre_vad', 'starting to simulate trajectories for both satellites of Motivation '//c_index_motiv)
+! 
+    !     !> simulate the trajectory
+    !     call lead%initialize(n, maxnum=500000_ip, df=twobody, rtol=[1.0e-14_wp], atol=[1.0e-14_wp], report=twobody_report)
+    !     call trac%initialize(n, maxnum=500000_ip, df=twobody, rtol=[1.0e-14_wp], atol=[1.0e-14_wp], report=twobody_report)
+    !     !> transfer the initial epoch in gps time to julian date
+    !     !> leadig satellite
+    !     call gpst2jdtt(self%gps1b_lead(1)%gpst_gps1b, lead%date)
+    !     !> tracking satellite
+    !     call gpst2jdtt(self%gps1b_trac(1)%gpst_gps1b, trac%date)
+    !     !> assign non-gravitational acceleration
+    !     allocate(lead%acc_non_grav_gcrs(size(self%acc1b_lead), 3), stat=err)
+    !     if (err /= 0) print *, "lead%acc_non_grav_gcrs: Allocation request denied"
+    !     allocate(trac%acc_non_grav_gcrs(size(self%acc1b_lead), 3), stat=err)
+    !     if (err /= 0) print *, "trac%acc_non_grav_gcrs: Allocation request denied"
+    !     
+    !     acc_srf2gcrs_loop: do i = 1, size(self%acc1b_lead), 1
+    !         !> convert non-gravitational acceleration in SRF to the inertial frame
+    !         lead%acc_non_grav_gcrs(i, :) = matmul(self%sca1b_lead(i)%rotm_s2i, self%acc1b_lead(i)%non_grav_acc)
+    !         trac%acc_non_grav_gcrs(i, :) = matmul(self%sca1b_trac(i)%rotm_s2i, self%acc1b_trac(i)%non_grav_acc)
+    !         !> factor the non-gravitational acceleration
+    !         factor_acc_loop: do j = 1, 3, 1
+    !             lead%acc_non_grav_gcrs(i, j) = lead%acc_non_grav_gcrs(i, j) * self%bf_lead(i) + self%af_lead(i)
+    !             trac%acc_non_grav_gcrs(i, j) = trac%acc_non_grav_gcrs(i, j) * self%bf_trac(i) + self%af_trac(i)
+    !         end do factor_acc_loop
+    !     end do acc_srf2gcrs_loop
+    !     !> -------end of transformation-------
+! 
+    !     !> leading satellite
+    !     call lead%first_call()
+    !     !> make sure the interval and the final epoch
+    !     lead%dt = self%kbr1b_both(2)%gpst_kbr1b - self%kbr1b_both(1)%gpst_kbr1b
+    !     lead%tf = self%kbr1b_both(size(self%kbr1b_both))%gpst_kbr1b - self%kbr1b_both(1)%gpst_kbr1b
+    !     ! lead%tf = 86400.0_wp
+    !     call lead%integrate(lead%t0, self%gps1b_lead(1)%pos_i, lead%tf, idid=idid, integration_mode=2, tstep=lead%dt)
+    !     !> th%kbr1b_both%pos_i_kbr is obtained from the report subroutine
+    !     do i = 1, size(self%kbr1b_both), 1
+    !         do j = 1, 3, 1
+    !             self%kbr1b_both(i)%pos_i_lead(j) = th%kbr1b_both(i)%pos_i_kbr(j)
+    !         end do
+    !     end do
+    !     call logger%info('phase_centre_vad', 'the trajectory simulation of Motivation '//c_index_motiv//' of the leading satellite is done')
+    !     !> -------end of leading satellite-------
+! 
+    !     !> tracking satellite
+    !     call trac%first_call()
+    !     !> make sure the interval and the final epoch
+    !     trac%dt = self%kbr1b_both(2)%gpst_kbr1b - self%kbr1b_both(1)%gpst_kbr1b
+    !     trac%tf = self%kbr1b_both(size(self%kbr1b_both))%gpst_kbr1b - self%kbr1b_both(1)%gpst_kbr1b
+    !     ! trac%tf = 86400.0_wp
+    !     call trac%integrate(trac%t0, self%gps1b_trac(1)%pos_i, trac%tf, idid=idid, integration_mode=2, tstep=trac%dt)
+    !     !> th%kbr1b_both%pos_i_kbr is obtained from the report subroutine
+    !     do i = 1, size(self%kbr1b_both), 1
+    !         do j = 1, 3, 1
+    !             self%kbr1b_both(i)%pos_i_trac(j) = th%kbr1b_both(i)%pos_i_kbr(j)
+    !         end do
+    !     end do
+    !     call logger%info('phase_centre_vad', 'the trajectory simulation of Motivation '//c_index_motiv//' of the tracking satellite is done')
+    !     !> -------end of tracking satellite-------
+! 
+    !     !> necessary deallocate
+    !     if (allocated(trac%acc_non_grav_gcrs)) deallocate(trac%acc_non_grav_gcrs, stat=err)
+    !     if (err /= 0) print *, "trac%acc_non_grav_gcrs: Deallocation request denied"
+    !     if (allocated(lead%acc_non_grav_gcrs)) deallocate(lead%acc_non_grav_gcrs, stat=err)
+    !     if (err /= 0) print *, "lead%acc_non_grav_gcrs: Deallocation request denied"
+    !     
+    !     !> delete
+    !     ! open(unit=588, file='..//output//inertial_trajectory_2019-01-01_C_0411.txt', iostat=ios, status="old", action="write")
+    !     ! if ( ios /= 0 ) stop "Error opening file name"
+    !     ! open(unit=899, file='..//output//inertial_trajectory_2019-01-01_D_0411.txt', iostat=ios, status="old", action="write")
+    !     ! if ( ios /= 0 ) stop "Error opening file name"
+    !     ! 
+    !     ! do i = 1, size(self%kbr1b_both), 1
+    !     !     write(588, '(4f30.15)') self%kbr1b_both(i)%gpst_kbr1b, self%kbr1b_both(i)%pos_i_lead
+    !     !     write(899, '(4f30.15)') self%kbr1b_both(i)%gpst_kbr1b, self%kbr1b_both(i)%pos_i_trac
+    !     ! end do
+    !     ! 
+    !     ! close(unit=588, iostat=ios)
+    !     ! if ( ios /= 0 ) stop "Error closing file unit 588"
+    !     ! close(unit=899, iostat=ios)
+    !     ! if ( ios /= 0 ) stop "Error closing file unit 899"
+    !     !> delete
+    !     
+    ! end subroutine trajectory_forward
+! 
+    ! subroutine twobody(me, t_in, x_in, xdot)
+    !     !! derivative routine for two-body orbit propagation
+    !     implicit none
+    !     class(ddeabm_class), intent(inout)           :: me
+    !     real(kind=wp)           , intent(in   )      :: t_in
+    !     real(kind=wp)           , intent(in   )      :: x_in(:)
+    !     real(kind=wp)           , intent(  out)      :: xdot(:)
+    !     real(kind=wp)                                :: residual_date
+    !     integer(kind = 4)                            :: record_num
+    !     real(kind = 8)                               :: RM_w(3,3)
+    !     real(kind = 16)                              :: DUT1
+    !     real(kind = 8)                               :: Position_sun(6)
+    !     real(kind = 8)                               :: Position_moon(6)
+    !     real(kind = 16)                              :: P_sun(6)
+    !     real(kind = 16)                              :: P_moon(6)
+    !     real(kind = 16)                              :: acc_solid_earth(3)
+    ! 
+    !     real(kind = 8)                               :: gamma
+    !     real(kind = 8)                               :: beta
+    !     real(kind=wp)                                     :: acc_non_grav(3)
+    !     real(dp)                                     :: gcrs2itrs(3, 3)
+    !     real(dp)                                     :: itrs2gcrs(3, 3)
+    !     real(dp)                                     :: time_8
+! 
+    !     real(kind=wp)                                :: au = 149597870700.0_wp
+    !     integer(kind=ip)                             :: i, err
+! 
+    !     gamma = 1.0_wp
+    !     beta = 1.0_wp
+! 
+    !     residual_date = t_in / 86400.0_wp
+! 
+    !     select type (me)
+    !     class is (spacecraft)
+! 
+    !         !> llocate(z_f(1), stat=err)
+    !         !> f (err /= 0) print *, "z_f: Allocation request denied"
+    !         !> _f(1)%name = './/input//GRACE_A_correct_2012-06-01.txt'
+    !         !> _f(1)%nheader = 0
+    !         !> _f(1)%unit = 256
+    !         !> pen(unit=z_f(1)%unit, file=z_f(1)%name, iostat=ios, status="old", action="read")
+    !         !> f ( ios /= 0 ) stop "Error opening file name"
+! 
+    !         !> _f(1)%nrow = get_file_n(z_f(1)%unit)
+    !         !> ead_data_loop: do i = 1, z_f(1)%nrow, 1
+    !         !>    read(z_f(1)%unit, *) me%non_grav(i, 1), me%non_grav(i, 2: 4)
+    !         !>    me%non_grav(i, 1) = gpst2jdtt(s%non_grav(i, 1))
+    !         !> nd do read_data_loop
+! 
+    !         !> lose(unit=z_f(1)%unit, iostat=ios)
+    !         !> f ( ios /= 0 ) stop "Error closing file unit z_f"
+! 
+    !         !> f (allocated(z_f)) deallocate(z_f, stat=err)
+    !         !> f (err /= 0) print *, "z_f: Deallocation request denied"
+    !         
+    !         time_8 = me%date + residual_date
+    !         record_num = int((me%tf - me%t0) / me%dt + 1)
+! 
+    !         gl%r_inertial = x_in(1: 3)
+    !         gl%v_inertial = x_in(4: 6)
+! 
+    !         call gcrs_itrs_m05(2_ip, [time_8], itrs2gcrs)
+    !         call gcrs_itrs_m05(1_ip, [time_8], gcrs2itrs)
+    !         gl%r_earth = matmul(gcrs2itrs, gl%r_inertial)
+    !         !10: moon
+    !         !11: sun
+    !         call PLEPH ( time_8, 10, 3, Position_moon )
+    !         call PLEPH ( time_8, 11, 3, Position_sun  )
+    !         P_sun  = Position_sun
+    !         P_moon = Position_moon
+    !         p_sun(4: 6) = matmul(gcrs2itrs, p_sun(1: 3))
+    !         P_moon(4: 6) = matmul(gcrs2itrs, P_moon(1: 3))
+    !         call solid_tide_M04(1, [me%date + residual_date], gl%r_earth, p_sun(4: 6) * au, P_moon(4: 6) * au, acc_solid_earth)
+    !         gl%acc_solid_inertial = matmul(itrs2gcrs, acc_solid_earth)
+! 
+    !         !> acceleration due to the third body
+    !         call ThirdBodyPerturbation_M06(1_ip, p_sun(4: 6) * au, p_moon(4: 6) * au, gl%r_inertial, gl%acc_thre_inertial)
+! 
+    !         ! calculate the gravitional accelaration in the earth-fixed system
+    !         call accxyz(gl%r_earth, gl%acc_grav_earth, me%degree, th%cs_coeffs%c_coeffs, th%cs_coeffs%s_coeffs)
+! 
+    !         gl%acc_grav_inertial = matmul(itrs2gcrs, gl%acc_grav_earth)
+! 
+    !         !! interpolation nongravtational
+    !         ! acc_non_grav = 0.0_wp
+    !         ! acc_non_grav(1) = linear_interp(me%non_grav(:, 1), me%non_grav(:, 2), real(me%date + residual_date, wp))
+    !         ! acc_non_grav(2) = linear_interp(me%non_grav(:, 1), me%non_grav(:, 3), real(me%date + residual_date, wp))
+    !         ! acc_non_grav(3) = linear_interp(me%non_grav(:, 1), me%non_grav(:, 4), real(me%date + residual_date, wp))
+! 
+    !         !> non-gravitational acceleration in the inertial frame
+    !         interp_acc_gcrs_loop: do i = 1, 3, 1
+    !             gl%acc_non_grav(i) = linear_interp(th%acc1b_lead%jdtt, me%acc_non_grav_gcrs(:, i), me%date + residual_date)
+    !         end do interp_acc_gcrs_loop
+! 
+    !         xdot(1: 3) = gl%v_inertial
+    !         xdot(4: 6) = gl%acc_grav_inertial! + gl%acc_thre_inertial + gl%acc_solid_inertial + gl%acc_non_grav
+! 
+    !         ! write(*,'(*(F30.15, 1X))') t , gl%r_earth, gl%acc_grav_inertial + gl%acc_rela_inertial
+    !         me%fevals = me%fevals + 1
+! 
+    !     end select
+    ! end subroutine twobody
+    ! !***********************************************************************************************
+    ! !***********************************************************************************************
+    ! subroutine twobody_report(me, t_in, x_in)
+    !     !! report function - write time, state to console
+    !     implicit none
+    !     class(ddeabm_class), intent(inout)          :: me
+    !     real(kind=wp)           , intent(in   )     :: t_in
+    !     real(kind=wp)           , intent(in   )     :: x_in(:)
+    !     real(kind=wp), allocatable                  :: c_coef(:, :)
+    !     real(kind=wp), allocatable                  :: s_coef(:, :)
+    !     character(len = 80)                         :: output_file
+    !     character(len = 80)                         :: earth_fixed_coor
+    !     character(len = 80)                         :: potential_file
+    !     character(len = 80)                         :: RM_file
+    !     integer(kind = 8)                           :: file_unit_report
+    !     integer(kind = 8)                           :: file_unit_earth
+    !     integer(kind = 8)                           :: file_unit_potential
+    !     integer(kind = 8)                           :: file_unit_RM
+    !     real(kind = 8)                              :: RM_w(3,3)
+    !     real(kind = 16)                             :: DUT1
+    !     double precision                            :: residual_date
+    !     character(len = 100)                        :: suffix
+    !     real(dp)                                    :: gcrs2itrs(3, 3)
+    !     real(dp)                                    :: time_8
+! 
+    !     integer(kind=ip)                            :: counter = 1_ip
+! 
+! 
+    !     !suffix = '_60L_M2.txt'
+    !     !residual_date = t_in / 86400.0
+    !     !file_unit_report = 333
+    !     !output_file = '../output/B-report.txt'
+    !     !file_unit_earth = 67
+    !     !earth_fixed_coor = 'output/A-coordinates_earth_fixed_system'//suffix
+    !     !file_unit_potential = 96
+    !     !potential_file = 'output/A-potential'//suffix
+    !     !file_unit_RM = 117
+    !     !RM_file = 'output/RM'//suffix
+! 
+    !     select type (me)
+    !     class is (spacecraft)
+    !         time_8 = me%date + residual_date
+! 
+    !         !allocate(c_coef(0: me%degree, 0: me%degree), s_coef(0: me%degree, 0: me%degree))
+! 
+    !         if (me%first) then  !print header
+    !             !open(file_unit_report, file=output_file, status='replace')
+    !             !open(file_unit_earth, file=earth_fixed_coor, status='replace')
+    !             !open(file_unit_potential, file=potential_file, status='replace')
+    !             !open(file_unit_RM, file=RM_file, status='replace')
+! 
+    !             !write(file_unit_report, '(*(A15, 1X))') 'time (sec)', 'x (m)', 'y (m)', 'z (m)'
+    !             !write(file_unit_earth, '(*(A15, 1x))') 'x y z'
+    !             !write(file_unit_potential, *) 'potential'
+! 
+    !             me%first = .false.
+! 
+    !             !close(file_unit_report)
+    !             !close(file_unit_earth)
+    !             !close(file_unit_potential)
+    !             !close(file_unit_RM)
+    !         end if
+! 
+    !         !open(file_unit_report, file=output_file, status='old', access='append')
+    !         !open(file_unit_earth, file=earth_fixed_coor, status='old', access='append')
+    !         !open(file_unit_potential, file=potential_file, status='old', access='append')
+    !         !open(file_unit_RM, file=RM_file, status='old', access='append')
+! 
+    !         ! Print t and x vector
+    !         !write(file_unit_report, '(*(f40.20, 1x))') me%date + residual_date, x_in
+    !         me%final_state = x_in
+! 
+    !         ! print the positions in
+    !         !if (me%w_time) then
+    !         !    call ITRSandGCRS_P(1, me%date, residual_date, 37, x_in(1: 3), gl%r_earth, RM_w, DUT1)
+    !         !end if
+    !         !call gcrs_itrs_m05(1_ip, [time_8], gcrs2itrs)
+    !         !gl%r_earth = matmul(gcrs2itrs, x_in(1: 3))
+    !         !write(file_unit_earth, '(*(F30.15, 1X))') me%date + residual_date, gl%r_earth
+    !         !write(file_unit_RM, '(*(F30.15, 1X))') me%date + residual_date, RM_w(1,:), RM_w(2,:), RM_w(3,:)
+! 
+    !         ! print potential
+    !         !call ReadCS(C_coef, S_coef, me%degree)
+    !         !call process(C_coef, S_coef, me%degree + 1, gl%r_earth, 0, me%degree, gl%potential)
+    !         !write(file_unit_potential, *) gl%potential
+! 
+    !         ! write(*,'(*(F30.15, 1X))') t_in , gl%r_earth, gl%acc_grav_inertial + gl%acc_rela_inertial
+    !         !close(file_unit_report)
+    !         !close(file_unit_earth)
+    !         !close(file_unit_potential)
+    !         !close(file_unit_RM)
+! 
+    !         !deallocate(c_coef)
+    !         !deallocate(s_coef)
+! 
+    !         th%kbr1b_both(counter)%pos_i_kbr = x_in(1: 3)
+    !         counter = counter + 1_ip
+    !         if (counter > (me%tf / me%dt + 1.0_wp)) counter = 1_ip
+    !     end select
+    ! end subroutine twobody_report
 
     subroutine destructor(self, returncode)
         class(satellite)          , intent(inout)        :: self
@@ -1998,7 +2018,7 @@ contains
                         end do read_gnv_lead_header
                         !> read in gps1b_lead data
                         read_gnv_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, &
+                            read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
                                                 self%gps1b_lead(i)%pos_e, reg, reg, reg,&
                                                 self%gps1b_lead(i)%vel_e
                             if (i > 2_ip) then
@@ -2027,7 +2047,7 @@ contains
                         end do read_gnv_trac_header
                         !> read in gps1b_trac data
                         read_gnv_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, &
+                            read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
                                                 self%gps1b_trac(i)%pos_e, reg, reg, reg, &
                                                 self%gps1b_trac(i)%vel_e
                             if (i > 2_ip) then
