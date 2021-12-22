@@ -159,7 +159,7 @@ contains
         
     end function output_path
 
-    subroutine lhs_read_xml(self, date, version, i_maneuver_time)
+    subroutine lhs_read_xml(self, date, version, i_maneuver_time, i_mirror)
         CLASS(xml_file) , INTENT(INOUT)                         :: self
         INTEGER(kind=ip)                                        :: ios, reason, fplerror
         integer(kind=ip)                                        :: i, num_path, err, k
@@ -171,7 +171,7 @@ contains
         integer(kind=ip)                                        :: i_date_d, i_date_m, i_date_y
         integer(kind=ip)                                        :: i_start_epoch, i_duration
         integer(kind=ip)                                        :: i_date_num(6)
-        integer(kind=ip), INTENT(  OUT)                         :: i_maneuver_time(8)
+        integer(kind=ip), INTENT(  OUT)                         :: i_maneuver_time(8), i_mirror
         character(len=3000)                                     :: temp1, temp2, temp3, flag
         character(len=3000)                                     :: c_temp2, c_temp3, c_start_epoch, c_duration
         character(len=3000)                                     :: c_vkbrptfilename(2)
@@ -186,6 +186,7 @@ contains
         character(len=7)                                        :: c_gsm_dayofyear
         character(len=2)                                        :: c_date_d, c_date_m
         character(len=4)                                        :: c_date_y
+        CHARACTER(len=1)                                        :: c_mirror !< character indicating mirror maneuver
 
         !> datetime
         type(datetime_type)                                     :: start_epoch, man1, man2, man3, man4
@@ -357,6 +358,20 @@ contains
                 !> path array
                 fplerror = self%urlpaths%set(key='ConfigPath', value=[config_path])
             end if
+
+            !> mirror
+            if (index(temp1, "<MirrorManeuver>") /= 0) then
+                !> the index of "<" and ">"
+                left(1) = index(temp1, "<")
+                left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
+                right(1) = index(temp1, ">")
+                right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
+                !> mirror
+                c_mirror = temp1(right(1) + 1: left(2) - 1)
+                call str2int(c_mirror, i_mirror, err)
+                if (err /= 0) error stop "The mirror maneuver flag error"
+            end if
+
             !> version
             if (index(temp1, "<Ver>") /= 0) then
                 !> the index of "<" and ">"
@@ -405,19 +420,31 @@ contains
                     flag = temp1(left(1) + 1_ip: right(1) - 1_ip)
                     
                     !> path array
-                    call split(temp1(right(1) + 1: left(2) - 1), path, delimiters=',', order='sequential', nulls='ignore')
-                    allocate(c_path(size(path)), stat=err)
-                    if (err /= 0) print *, "c_path: Allocation request denied"
-                    !> folder walk
-                    do k = 1, size(path), 1
-                        paths = folder_walk_win(path(k), flag)
+                    if (index(temp1(right(1) + 1: left(2) - 1), ",") /= 0) then
+                        call split(temp1(right(1) + 1: left(2) - 1), path, delimiters=',', order='sequential', nulls='ignore')
+                        allocate(c_path(size(path)), stat=err)
+                        if (err /= 0) print *, "c_path: Allocation request denied"
+                        !> folder walk
+                        do k = 1, size(path), 1
+                            paths = folder_walk_win(path(k), flag)
+                            if (size(paths) /= 1) Then
+                                call logger%fatal("math_collection_module", trim(flag)//" files not appear in "//temp1(right(1) + 1: left(2) - 1))
+                                call xml_o%xml2file(1, trim(flag)//" files not appear in the input folder")
+                                stop trim(flag)//" files not appear in the input folder"
+                            end if
+                            c_path(k) = trim(paths(1))
+                        end do
+                    else
+                        allocate(c_path(1), stat=err)
+                        paths = folder_walk_win(temp1(right(1) + 1: left(2) - 1), flag)
                         if (size(paths) /= 1) Then
                             call logger%fatal("math_collection_module", trim(flag)//" files not appear in "//temp1(right(1) + 1: left(2) - 1))
                             call xml_o%xml2file(1, trim(flag)//" files not appear in the input folder")
                             stop trim(flag)//" files not appear in the input folder"
                         end if
-                        c_path(k) = trim(paths(1))
-                    end do
+                        c_path = paths(1)
+                    end if
+                    
                     
                     fplerror = self%urlpaths%set(key=trim(flag), value=c_path)
                     if (ALLOCATED(paths)) DEALLOCATE(paths, stat=err)
