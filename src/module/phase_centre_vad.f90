@@ -284,13 +284,13 @@ contains
 
         integer(kind=ip), DIMENSION(:)  , INTENT(IN   )      :: i_maneuver_time
 
-        if (any(i_maneuver_time < self%kbr1b_both(1)%gpst_kbr1b)) then
+        if (any(i_maneuver_time < self%sca1b_lead(1)%gpst_sca1b)) then
             call logger%error('phase_centre_vad', "Maneuver time error")
             call xml_o%xml2file(1, "Maneuver time error")
             stop
         end if
 
-        if (any(i_maneuver_time > self%kbr1b_both(size(self%kbr1b_both))%gpst_kbr1b)) then
+        if (any(i_maneuver_time > self%sca1b_lead(size(self%sca1b_lead))%gpst_sca1b)) then
             call logger%error('phase_centre_vad', "Maneuver time error")
             call xml_o%xml2file(1, "Maneuver time error")
             stop
@@ -1918,213 +1918,402 @@ contains
                         
                         call logger%info('phase_centre_vad', 'read in VAC1B_B data successfully')
                     case ('KBR1BFile')
-                        !> allocate the kbr1b array
-                        allocate(self%kbr1b_both(ifile%nrow - ifile%nheader), stat=err)
-                        allocate(self%kbr1b_2degdiff(ifile%nrow - ifile%nheader - 8), stat=err)
-                        allocate(self%kbr1b_3degdiff(ifile%nrow - ifile%nheader - 12), stat=err)
-                        
-                        if (err /= 0) then
-                            call logger%error("phase_centre_vad", "self%kbr1b_both: Allocation request denied")
-                            call xml_o%xml2file(1, "self%kbr1b_both: Allocation request denied")
-                            stop
-                        end if
-                        !> read in kbr header
-                        read_kbr_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_kbr_header
-                        !> read in kbr data
-                        read_kbr_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%kbr1b_both(i)%gpst_kbr1b, temp, self%kbr1b_both(i)%range, &
-                                                self%kbr1b_both(i)%range_rate, self%kbr1b_both(i)%range_accl, &
-                                                self%kbr1b_both(i)%iono_corr,  self%kbr1b_both(i)%tof_range, &
-                                                self%kbr1b_both(i)%tof_rate,   self%kbr1b_both(i)%tof_accl
-                            if (i > 2_ip) then
-                                if (.not. isequal(self%kbr1b_both(i)%gpst_kbr1b - self%kbr1b_both(i - 1)%gpst_kbr1b, &
-                                                  self%kbr1b_both(i - 1)%gpst_kbr1b - self%kbr1b_both(i - 2)%gpst_kbr1b)) then
-                                    call logger%error("phase_centre_vad", "Time stamp gap occurred in KBR1B file "//trim(real2str(self%kbr1b_both(i)%gpst_kbr1b)))
-                                    call xml_o%xml2file(1, "Time stamp gap occurred in KBR1B file")
-                                    stop
-                                end if
+                        if (ind == 1) then
+                            !> data lines in input files
+                            ip_ndata = 0_ip
+                            data_lines_kbr: do i = 1, size(value), 1
+                                ip_ndata = ip_ndata + ifiles(i)%nrow - ifiles(i)%nheader
+                            end do data_lines_kbr
+                            !> allocate the kbr1b array
+                            allocate(self%kbr1b_both(ip_ndata), stat=err)
+                            allocate(self%kbr1b_2degdiff(ip_ndata - 8), stat=err)
+                            allocate(self%kbr1b_3degdiff(ip_ndata - 12), stat=err)
+                            
+                            if (err /= 0) then
+                                call logger%error("phase_centre_vad", "self%kbr1b_both: Allocation request denied")
+                                call xml_o%xml2file(1, "self%kbr1b_both: Allocation request denied")
+                                stop
                             end if
-                        end do read_kbr_data
+                            !> read in kbr header
+                            read_kbr_header: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_kbr_header
+                            !> read in kbr data
+                            read_kbr_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                                read(ifile%unit, *) self%kbr1b_both(i)%gpst_kbr1b, temp, self%kbr1b_both(i)%range, &
+                                                    self%kbr1b_both(i)%range_rate, self%kbr1b_both(i)%range_accl, &
+                                                    self%kbr1b_both(i)%iono_corr,  self%kbr1b_both(i)%tof_range, &
+                                                    self%kbr1b_both(i)%tof_rate,   self%kbr1b_both(i)%tof_accl
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%kbr1b_both(i)%gpst_kbr1b - self%kbr1b_both(i - 1)%gpst_kbr1b, &
+                                                      self%kbr1b_both(i - 1)%gpst_kbr1b - self%kbr1b_both(i - 2)%gpst_kbr1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in KBR1B file "//trim(real2str(self%kbr1b_both(i)%gpst_kbr1b)))
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in KBR1B file")
+                                        stop
+                                    end if
+                                end if
+                            end do read_kbr_data
+                        else
+                            !> read in kbr header
+                            read_kbr_header_n: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_kbr_header_n
+                            !> read in kbr data
+                            read_kbr_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                                read(ifile%unit, *) self%kbr1b_both(i)%gpst_kbr1b, temp, self%kbr1b_both(i)%range, &
+                                                    self%kbr1b_both(i)%range_rate, self%kbr1b_both(i)%range_accl, &
+                                                    self%kbr1b_both(i)%iono_corr,  self%kbr1b_both(i)%tof_range, &
+                                                    self%kbr1b_both(i)%tof_rate,   self%kbr1b_both(i)%tof_accl
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%kbr1b_both(i)%gpst_kbr1b - self%kbr1b_both(i - 1)%gpst_kbr1b, &
+                                                      self%kbr1b_both(i - 1)%gpst_kbr1b - self%kbr1b_both(i - 2)%gpst_kbr1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in KBR1B file "//trim(real2str(self%kbr1b_both(i)%gpst_kbr1b)))
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in KBR1B file")
+                                        stop
+                                    end if
+                                end if
+                            end do read_kbr_data_n
+                        end if
                         call logger%info('phase_centre_vad', 'read in KBR1B_X data successfully')
                     case ('ROI1B-AFile')
-                        !> allocate the gps1b_lead array
-                        if (.not. ALLOCATED(self%gps1b_lead)) then
-                            allocate(self%gps1b_lead(ifile%nrow - ifile%nheader), stat=err)
-                            if (err /= 0) then
-                                call logger%error('phase_centre_vad', "self%gps1b_lead: Allocation request denied")
-                                call xml_o%xml2file(1, "self%gps1b_lead: Allocation request denied")
-                                stop
-                            end if
-                        end if
-                        !> read in gps1b_lead header
-                        read_gni_lead_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_gni_lead_header
-                        !> read in gps1b_lead data
-                        read_gni_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
-                                                self%gps1b_lead(i)%pos_i, reg, reg, reg,&
-                                                self%gps1b_lead(i)%vel_i
-                            if (i > 2_ip) then
-                                if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
-                                                  self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
-                                    call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the leading satellite")
-                                    call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the leading satellite")
+                        if (ind == 1) then
+                            !> data lines in input files
+                            ip_ndata = 0_ip
+                            data_lines_gni_a: do i = 1, size(value), 1
+                                ip_ndata = ip_ndata + ifiles(i)%nrow - ifiles(i)%nheader
+                            end do data_lines_gni_a
+                            !> allocate the gps1b_lead array
+                            if (.not. ALLOCATED(self%gps1b_lead)) then
+                                allocate(self%gps1b_lead(ip_ndata), stat=err)
+                                if (err /= 0) then
+                                    call logger%error('phase_centre_vad', "self%gps1b_lead: Allocation request denied")
+                                    call xml_o%xml2file(1, "self%gps1b_lead: Allocation request denied")
                                     stop
                                 end if
                             end if
-                        end do read_gni_lead_data
+                            !> read in gps1b_lead header
+                            read_gni_lead_header: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_gni_lead_header
+                            !> read in gps1b_lead data
+                            read_gni_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
+                                                    self%gps1b_lead(i)%pos_i, reg, reg, reg,&
+                                                    self%gps1b_lead(i)%vel_i
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
+                                                      self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the leading satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the leading satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_gni_lead_data
+                        else
+                            !> read in gps1b_lead header
+                            read_gni_lead_header_n: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_gni_lead_header_n
+                            !> read in gps1b_lead data
+                            read_gni_lead_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
+                                                    self%gps1b_lead(i)%pos_i, reg, reg, reg,&
+                                                    self%gps1b_lead(i)%vel_i
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
+                                                      self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the leading satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the leading satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_gni_lead_data_n
+                        end if
                         call logger%info('phase_centre_vad', 'read in GNI1B_A data successfully')
                     CASE ('ROI1B-BFile')
-                        !> allocate the gps1b_trac array
-                        if (.not. ALLOCATED(self%gps1b_trac)) then
-                            allocate(self%gps1b_trac(ifile%nrow - ifile%nheader), stat=err)
-                            if (err /= 0) then
-                                call logger%error('phase_centre_vad', "self%gps1b_trac: Allocation request denied")
-                                call xml_o%xml2file(1, "self%gps1b_trac: Allocation request denied")
-                                stop
-                            end if
-                        end if
-                        !> read in gps1b_trac header
-                        read_gni_trac_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_gni_trac_header
-                        !> read in gps1b_trac data
-                        read_gni_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
-                                                self%gps1b_trac(i)%pos_i, reg, reg, reg, &
-                                                self%gps1b_trac(i)%vel_i
-                            if (i > 2_ip) then
-                                if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
-                                                  self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
-                                    call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the tracking satellite")
-                                    call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                        if (ind == 1) then
+                            !> data lines in input files
+                            ip_ndata = 0_ip
+                            data_lines_gni_b: do i = 1, size(value), 1
+                                ip_ndata = ip_ndata + ifiles(i)%nrow - ifiles(i)%nheader
+                            end do data_lines_gni_b
+                            !> allocate the gps1b_trac array
+                            if (.not. ALLOCATED(self%gps1b_trac)) then
+                                allocate(self%gps1b_trac(ip_ndata), stat=err)
+                                if (err /= 0) then
+                                    call logger%error('phase_centre_vad', "self%gps1b_trac: Allocation request denied")
+                                    call xml_o%xml2file(1, "self%gps1b_trac: Allocation request denied")
                                     stop
                                 end if
                             end if
-                        end do read_gni_trac_data
+                            !> read in gps1b_trac header
+                            read_gni_trac_header: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_gni_trac_header
+                            !> read in gps1b_trac data
+                            read_gni_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
+                                                    self%gps1b_trac(i)%pos_i, reg, reg, reg, &
+                                                    self%gps1b_trac(i)%vel_i
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
+                                                      self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_gni_trac_data
+                        else
+                            !> read in gps1b_trac header
+                            read_gni_trac_header_n: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_gni_trac_header_n
+                            !> read in gps1b_trac data
+                            read_gni_trac_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
+                                                    self%gps1b_trac(i)%pos_i, reg, reg, reg, &
+                                                    self%gps1b_trac(i)%vel_i
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
+                                                      self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_gni_trac_data_n
+                        end if
                         call logger%info('phase_centre_vad', 'read in GNI1B_B data successfully')
                     
                     case ('KOE1B-AFile')
-                        !> allocate the gps1b_lead array
-                        if (.not. ALLOCATED(self%gps1b_lead)) then
-                            allocate(self%gps1b_lead(ifile%nrow - ifile%nheader), stat=err)
-                            if (err /= 0) then
-                                call logger%error('phase_centre_vad', "self%gps1b_lead: Allocation request denied")
-                                call xml_o%xml2file(1, "self%gps1b_lead: Allocation request denied")
-                                stop
-                            end if
-                        end if
-                        !> read in gps1b_lead header
-                        read_gnv_lead_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_gnv_lead_header
-                        !> read in gps1b_lead data
-                        read_gnv_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
-                                                self%gps1b_lead(i)%pos_e, reg, reg, reg,&
-                                                self%gps1b_lead(i)%vel_e
-                            if (i > 2_ip) then
-                                if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
-                                                  self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
-                                    call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the leading satellite")
-                                    call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the leading satellite")
+                        if (ind == 1) then
+                            !> data lines in input files
+                            ip_ndata = 0_ip
+                            data_lines_gnv_a: do i = 1, size(value), 1
+                                ip_ndata = ip_ndata + ifiles(i)%nrow - ifiles(i)%nheader
+                            end do data_lines_gnv_a
+                            !> allocate the gps1b_lead array
+                            if (.not. ALLOCATED(self%gps1b_lead)) then
+                                allocate(self%gps1b_lead(ip_ndata), stat=err)
+                                if (err /= 0) then
+                                    call logger%error('phase_centre_vad', "self%gps1b_lead: Allocation request denied")
+                                    call xml_o%xml2file(1, "self%gps1b_lead: Allocation request denied")
                                     stop
                                 end if
                             end if
-                        end do read_gnv_lead_data
+                            !> read in gps1b_lead header
+                            read_gnv_lead_header: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_gnv_lead_header
+                            !> read in gps1b_lead data
+                            read_gnv_lead_data: do i = 1, ifile%nrow-ifile%nheader, 1
+                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
+                                                    self%gps1b_lead(i)%pos_e, reg, reg, reg,&
+                                                    self%gps1b_lead(i)%vel_e
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
+                                                      self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the leading satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the leading satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_gnv_lead_data
+                        else
+                            !> read in gps1b_lead header
+                            read_gnv_lead_header_n: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_gnv_lead_header_n
+                            !> read in gps1b_lead data
+                            read_gnv_lead_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
+                                                    self%gps1b_lead(i)%pos_e, reg, reg, reg,&
+                                                    self%gps1b_lead(i)%vel_e
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
+                                                      self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the leading satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the leading satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_gnv_lead_data_n
+                        end if
                         call logger%info('phase_centre_vad', 'read in GNV1B_A data successfully')
                     CASE ('KOE1B-BFile')
-                        !> allocate the gps1b_trac array
-                        if (.not. ALLOCATED(self%gps1b_trac)) then
-                            allocate(self%gps1b_trac(ifile%nrow - ifile%nheader), stat=err)
-                            if (err /= 0) then
-                                call logger%error('phase_centre_vad', "self%gps1b_trac: Allocation request denied")
-                                call xml_o%xml2file(1, "self%gps1b_trac: Allocation request denied")
-                                stop
-                            end if
-                        end if
-                        !> read in gps1b_trac header
-                        read_gnv_trac_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_gnv_trac_header
-                        !> read in gps1b_trac data
-                        read_gnv_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
-                                                self%gps1b_trac(i)%pos_e, reg, reg, reg, &
-                                                self%gps1b_trac(i)%vel_e
-                            if (i > 2_ip) then
-                                if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
-                                                  self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
-                                    call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the tracking satellite")
-                                    call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                        if (ind == 1) then
+                            !> data lines in input files
+                            ip_ndata = 0_ip
+                            data_lines_gnv_b: do i = 1, size(value), 1
+                                ip_ndata = ip_ndata + ifiles(i)%nrow - ifiles(i)%nheader
+                            end do data_lines_gnv_b
+                            !> allocate the gps1b_trac array
+                            if (.not. ALLOCATED(self%gps1b_trac)) then
+                                allocate(self%gps1b_trac(ip_ndata), stat=err)
+                                if (err /= 0) then
+                                    call logger%error('phase_centre_vad', "self%gps1b_trac: Allocation request denied")
+                                    call xml_o%xml2file(1, "self%gps1b_trac: Allocation request denied")
                                     stop
                                 end if
                             end if
-                        end do read_gnv_trac_data
+                            !> read in gps1b_trac header
+                            read_gnv_trac_header: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_gnv_trac_header
+                            !> read in gps1b_trac data
+                            read_gnv_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
+                                                    self%gps1b_trac(i)%pos_e, reg, reg, reg, &
+                                                    self%gps1b_trac(i)%vel_e
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
+                                                      self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_gnv_trac_data
+                        else
+                            !> read in gps1b_trac header
+                            read_gnv_trac_header_n: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_gnv_trac_header_n
+                            !> read in gps1b_trac data
+                            read_gnv_trac_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
+                                                    self%gps1b_trac(i)%pos_e, reg, reg, reg, &
+                                                    self%gps1b_trac(i)%vel_e
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
+                                                      self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ROI1B file for the tracking satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_gnv_trac_data_n
+                        end if
                         call logger%info('phase_centre_vad', 'read in GNV1B_B data successfully')
                     
                     case ('SCA1B-AFile')
-                        !> allocate the sca1b_c array
-                        allocate(self%sca1b_lead(ifile%nrow - ifile%nheader), stat=err)
-                        if (err /= 0) then
-                            call logger%error('phase_centre_vad', "self%sca1b_lead: Allocation request denied")
-                            call xml_o%xml2file(1, "self%sca1b_lead: Allocation request denied")
-                            stop
-                        end if
-                        !> read in sca1b_lead header
-                        read_sca_lead_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_sca_lead_header
-                        !> read in sca1b_lead data
-                        read_sca_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%sca1b_lead(i)%gpst_sca1b, temp, temp, reg, &
-                                                self%sca1b_lead(i)%quaternion
-                            !> convert quaternion to rotation matrix
-                            self%sca1b_lead(i)%rotm_i2s = q2m(self%sca1b_lead(i)%quaternion)
-                            self%sca1b_lead(i)%rotm_s2i = TRANSPOSE(self%sca1b_lead(i)%rotm_i2s)
-                            !> check if the time stamp gap exists
-                            if (i > 2_ip) then
-                                if (.not. isequal(self%sca1b_lead(i)%gpst_sca1b - self%sca1b_lead(i - 1)%gpst_sca1b, &
-                                                  self%sca1b_lead(i - 1)%gpst_sca1b - self%sca1b_lead(i - 2)%gpst_sca1b)) then
-                                    call logger%error("phase_centre_vad", "Time stamp gap occurred in SCA1B file for the leading satellite")
-                                    call xml_o%xml2file(1, "Time stamp gap occurred in SCA1B file for the leading satellite")
-                                    stop
-                                end if
+                        if (ind == 1) then
+                            !> data lines in input files
+                            ip_ndata = 0_ip
+                            data_lines_sca_a: do i = 1, size(value), 1
+                                ip_ndata = ip_ndata + ifiles(i)%nrow - ifiles(i)%nheader
+                            end do data_lines_sca_a
+                            !> allocate the sca1b_c array
+                            allocate(self%sca1b_lead(ip_ndata), stat=err)
+                            if (err /= 0) then
+                                call logger%error('phase_centre_vad', "self%sca1b_lead: Allocation request denied")
+                                call xml_o%xml2file(1, "self%sca1b_lead: Allocation request denied")
+                                stop
                             end if
-                        end do read_sca_lead_data
+                            !> read in sca1b_lead header
+                            read_sca_lead_header: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_sca_lead_header
+                            !> read in sca1b_lead data
+                            read_sca_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                                read(ifile%unit, *) self%sca1b_lead(i)%gpst_sca1b, temp, temp, reg, &
+                                                    self%sca1b_lead(i)%quaternion
+                                !> convert quaternion to rotation matrix
+                                self%sca1b_lead(i)%rotm_i2s = q2m(self%sca1b_lead(i)%quaternion)
+                                self%sca1b_lead(i)%rotm_s2i = TRANSPOSE(self%sca1b_lead(i)%rotm_i2s)
+                                !> check if the time stamp gap exists
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%sca1b_lead(i)%gpst_sca1b - self%sca1b_lead(i - 1)%gpst_sca1b, &
+                                                      self%sca1b_lead(i - 1)%gpst_sca1b - self%sca1b_lead(i - 2)%gpst_sca1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in SCA1B file for the leading satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in SCA1B file for the leading satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_sca_lead_data
+                        else
+                            !> read in sca1b_lead header
+                            read_sca_lead_header_n: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_sca_lead_header_n
+                            !> read in sca1b_lead data
+                            read_sca_lead_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                                read(ifile%unit, *) self%sca1b_lead(i)%gpst_sca1b, temp, temp, reg, &
+                                                    self%sca1b_lead(i)%quaternion
+                                !> convert quaternion to rotation matrix
+                                self%sca1b_lead(i)%rotm_i2s = q2m(self%sca1b_lead(i)%quaternion)
+                                self%sca1b_lead(i)%rotm_s2i = TRANSPOSE(self%sca1b_lead(i)%rotm_i2s)
+                                !> check if the time stamp gap exists
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%sca1b_lead(i)%gpst_sca1b - self%sca1b_lead(i - 1)%gpst_sca1b, &
+                                                      self%sca1b_lead(i - 1)%gpst_sca1b - self%sca1b_lead(i - 2)%gpst_sca1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in SCA1B file for the leading satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in SCA1B file for the leading satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_sca_lead_data_n
+                        end if
                         call logger%info('phase_centre_vad', 'read in SCA1B_A data successfully')
                     case ('SCA1B-BFile')
-                        !> allocate the sca1b_D array
-                        allocate(self%sca1b_TRAC(ifile%nrow - ifile%nheader), stat=err)
-                        if (err /= 0) then
-                            call logger%error('phase_centre_vad', "self%sca1b_trac: Allocation request denied")
-                            call xml_o%xml2file(1, "self%sca1b_trac: Allocation request denied")
-                            stop
-                        end if
-                        !> read in sca1b_trac header
-                        read_sca_trac_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_sca_trac_header
-                        !> read in sca1b_trac data
-                        read_sca_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%sca1b_trac(i)%gpst_sca1b, temp, temp, reg, &
-                                                self%sca1b_trac(i)%quaternion
-                            !> convert quaternion to rotation matrix
-                            self%sca1b_trac(i)%rotm_i2s = q2m(self%sca1b_trac(i)%quaternion)
-                            self%sca1b_trac(i)%rotm_s2i = TRANSPOSE(self%sca1b_trac(i)%rotm_i2s)
-                            !> check if the time stamp gap exists
-                            if (i > 2_ip) then
-                                if (.not. isequal(self%sca1b_trac(i)%gpst_sca1b - self%sca1b_trac(i - 1)%gpst_sca1b, &
-                                                  self%sca1b_trac(i - 1)%gpst_sca1b - self%sca1b_trac(i - 2)%gpst_sca1b)) then
-                                    call logger%error("phase_centre_vad", "Time stamp gap occurred in SCA1B file for the tracking satellite")
-                                    call xml_o%xml2file(1, "Time stamp gap occurred in SCA1B file for the tracking satellite")
-                                    stop
-                                end if
+                        if (ind == 1) then
+                            !> data lines in input files
+                            ip_ndata = 0_ip
+                            data_lines_sca_b: do i = 1, size(value), 1
+                                ip_ndata = ip_ndata + ifiles(i)%nrow - ifiles(i)%nheader
+                            end do data_lines_sca_b
+                            !> allocate the sca1b_D array
+                            allocate(self%sca1b_TRAC(ip_ndata), stat=err)
+                            if (err /= 0) then
+                                call logger%error('phase_centre_vad', "self%sca1b_trac: Allocation request denied")
+                                call xml_o%xml2file(1, "self%sca1b_trac: Allocation request denied")
+                                stop
                             end if
-                        end do read_sca_trac_data
+                            !> read in sca1b_trac header
+                            read_sca_trac_header: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_sca_trac_header
+                            !> read in sca1b_trac data
+                            read_sca_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                                read(ifile%unit, *) self%sca1b_trac(i)%gpst_sca1b, temp, temp, reg, &
+                                                    self%sca1b_trac(i)%quaternion
+                                !> convert quaternion to rotation matrix
+                                self%sca1b_trac(i)%rotm_i2s = q2m(self%sca1b_trac(i)%quaternion)
+                                self%sca1b_trac(i)%rotm_s2i = TRANSPOSE(self%sca1b_trac(i)%rotm_i2s)
+                                !> check if the time stamp gap exists
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%sca1b_trac(i)%gpst_sca1b - self%sca1b_trac(i - 1)%gpst_sca1b, &
+                                                      self%sca1b_trac(i - 1)%gpst_sca1b - self%sca1b_trac(i - 2)%gpst_sca1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in SCA1B file for the tracking satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in SCA1B file for the tracking satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_sca_trac_data
+                        else
+                            !> read in sca1b_trac header
+                            read_sca_trac_header_n: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_sca_trac_header_n
+                            !> read in sca1b_trac data
+                            read_sca_trac_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                                read(ifile%unit, *) self%sca1b_trac(i)%gpst_sca1b, temp, temp, reg, &
+                                                    self%sca1b_trac(i)%quaternion
+                                !> convert quaternion to rotation matrix
+                                self%sca1b_trac(i)%rotm_i2s = q2m(self%sca1b_trac(i)%quaternion)
+                                self%sca1b_trac(i)%rotm_s2i = TRANSPOSE(self%sca1b_trac(i)%rotm_i2s)
+                                !> check if the time stamp gap exists
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%sca1b_trac(i)%gpst_sca1b - self%sca1b_trac(i - 1)%gpst_sca1b, &
+                                                      self%sca1b_trac(i - 1)%gpst_sca1b - self%sca1b_trac(i - 2)%gpst_sca1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in SCA1B file for the tracking satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in SCA1B file for the tracking satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_sca_trac_data_n
+                        end if
                         call logger%info('phase_centre_vad', 'read in SCA1B_B data successfully')
                     case ('ACC1B-AFile')
                         if (ind == 1) then
@@ -2179,30 +2368,55 @@ contains
                         
                         call logger%info('phase_centre_vad', 'read in ACC1B_A data successfully')
                     case ("ACC1B-BFile")
-                        !> allocate the acc1b_trac array
-                        allocate(self%acc1b_trac(ifile%nrow - ifile%nheader), stat=err)
-                        if (err /= 0) then
-                            call logger%error('phase_centre_vad', "self%acc1b_trac: Allocation request denied")
-                            call xml_o%xml2file(1, "self%acc1b_trac: Allocation request denied")
-                            stop
-                        end if
-                        !> read in acc1b_trac header
-                        read_acc_trac_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_acc_trac_header
-                        !> read in acc1b_trac data
-                        read_acc_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%acc1b_trac(i)%gpst_acc1b, temp, temp, &
-                                                self%acc1b_trac(i)%non_grav_acc
-                            if (i > 2_ip) then
-                                if (.not. isequal(self%acc1b_trac(i)%gpst_acc1b - self%acc1b_trac(i - 1)%gpst_acc1b, &
-                                                  self%acc1b_trac(i - 1)%gpst_acc1b - self%acc1b_trac(i - 2)%gpst_acc1b)) then
-                                    call logger%error("phase_centre_vad", "Time stamp gap occurred in ACC1B file for the tracking satellite")
-                                    call xml_o%xml2file(1, "Time stamp gap occurred in ACC1B file for the tracking satellite")
-                                    stop
-                                end if
+                        if (ind == 1) then
+                            !> data lines in input files
+                            ip_ndata = 0_ip
+                            data_lines_acc_b: do i = 1, size(value), 1
+                                ip_ndata = ip_ndata + ifiles(i)%nrow - ifiles(i)%nheader
+                            end do data_lines_acc_b
+                            !> allocate the acc1b_trac array
+                            allocate(self%acc1b_trac(ip_ndata), stat=err)
+                            if (err /= 0) then
+                                call logger%error('phase_centre_vad', "self%acc1b_trac: Allocation request denied")
+                                call xml_o%xml2file(1, "self%acc1b_trac: Allocation request denied")
+                                stop
                             end if
-                        end do read_acc_trac_data
+                            !> read in acc1b_trac header
+                            read_acc_trac_header: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_acc_trac_header
+                            !> read in acc1b_trac data
+                            read_acc_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                                read(ifile%unit, *) self%acc1b_trac(i)%gpst_acc1b, temp, temp, &
+                                                    self%acc1b_trac(i)%non_grav_acc
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%acc1b_trac(i)%gpst_acc1b - self%acc1b_trac(i - 1)%gpst_acc1b, &
+                                                      self%acc1b_trac(i - 1)%gpst_acc1b - self%acc1b_trac(i - 2)%gpst_acc1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ACC1B file for the tracking satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ACC1B file for the tracking satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_acc_trac_data
+                        else
+                            !> read in acc1b_trac header
+                            read_acc_trac_header_n: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_acc_trac_header_n
+                            !> read in acc1b_trac data
+                            read_acc_trac_data_n: do i = ifiles(ind-1)%nrow-ifiles(ind-1)%nheader+1, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                                read(ifile%unit, *) self%acc1b_trac(i)%gpst_acc1b, temp , temp, &
+                                                    self%acc1b_trac(i)%non_grav_acc
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%acc1b_trac(i)%gpst_acc1b - self%acc1b_trac(i - 1)%gpst_acc1b, &
+                                                      self%acc1b_trac(i - 1)%gpst_acc1b - self%acc1b_trac(i - 2)%gpst_acc1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ACC1B file for the tracking satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ACC1B fil for the tracking satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_acc_trac_data_n
+                        end if
                         call logger%info('phase_centre_vad', 'read in ACC1B_B data successfully')
                     case ('GSM')
                         !> allocate the stocks coefficients array
@@ -2265,45 +2479,45 @@ contains
                     case ('ConfigPath')
                     case ('THA1B-AFile')
                         !> allocate the tha1b_lead array
-                        allocate(self%tha1b_lead(ifile%nrow - ifile%nheader), stat=err)
-                        if (err /= 0) then
-                            call logger%error('phase_centre_vad', "self%tha1b_lead: Allocation request denied")
-                            call xml_o%xml2file(1, "self%tha1b_lead: Allocation request denied")
-                            stop
-                        end if
-                        !> read in tha1b_lead header
-                        read_tha_lead_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_tha_lead_header
-                        !> read in tha1b_lead data
-                        read_tha_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%tha1b_lead(i)%gpst_intg, self%tha1b_lead(i)%gpst_frac, temp, temp, temp, &
-                                                self%tha1b_lead(i)%thruster_time, self%tha1b_lead(i)%accum_time
-                            self%tha1b_lead(i)%gpst = self%tha1b_lead(i)%gpst_intg + self%tha1b_lead(i)%gpst_frac * 1e-6_wp
-                            
-                        end do read_tha_lead_data
-                        call logger%info('phase_centre_vad', 'read in THA1B_A data successfully')
+                        ! allocate(self%tha1b_lead(ifile%nrow - ifile%nheader), stat=err)
+                        ! if (err /= 0) then
+                        !     call logger%error('phase_centre_vad', "self%tha1b_lead: Allocation request denied")
+                        !     call xml_o%xml2file(1, "self%tha1b_lead: Allocation request denied")
+                        !     stop
+                        ! end if
+                        ! !> read in tha1b_lead header
+                        ! read_tha_lead_header: do i = 1, ifile%nheader, 1
+                        !     read(ifile%unit, *) temp
+                        ! end do read_tha_lead_header
+                        ! !> read in tha1b_lead data
+                        ! read_tha_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                        !     read(ifile%unit, *) self%tha1b_lead(i)%gpst_intg, self%tha1b_lead(i)%gpst_frac, temp, temp, temp, &
+                        !                         self%tha1b_lead(i)%thruster_time, self%tha1b_lead(i)%accum_time
+                        !     self%tha1b_lead(i)%gpst = self%tha1b_lead(i)%gpst_intg + self%tha1b_lead(i)%gpst_frac * 1e-6_wp
+                        !     
+                        ! end do read_tha_lead_data
+                        ! call logger%info('phase_centre_vad', 'read in THA1B_A data successfully')
                     case ("THA1B-BFile")
                         !> allocate the tha1b_trac array
-                        allocate(self%tha1b_trac(ifile%nrow - ifile%nheader), stat=err)
-                        if (err /= 0) then
-                            call logger%error('phase_centre_vad', "self%tha1b_trac: Allocation request denied")
-                            call xml_o%xml2file(1, "self%tha1b_trac: Allocation request denied")
-                            stop
-                        end if
-                        !> read in tha1b_trac header
-                        read_tha_trac_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_tha_trac_header
-                        !> read in tha1b_trac data
-                        read_tha_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%tha1b_trac(i)%gpst_intg, self%tha1b_trac(i)%gpst_frac, temp, temp, temp, &
-                                                self%tha1b_trac(i)%thruster_time, self%tha1b_trac(i)%accum_time
-                            !> assign the gpst
-                            self%tha1b_trac(i)%gpst = self%tha1b_trac(i)%gpst_intg + self%tha1b_trac(i)%gpst_frac * 1e-6_wp
-                            
-                        end do read_tha_trac_data
-                        call logger%info('phase_centre_vad', 'read in THA1B_B data successfully')                   
+                        ! allocate(self%tha1b_trac(ifile%nrow - ifile%nheader), stat=err)
+                        ! if (err /= 0) then
+                        !     call logger%error('phase_centre_vad', "self%tha1b_trac: Allocation request denied")
+                        !     call xml_o%xml2file(1, "self%tha1b_trac: Allocation request denied")
+                        !     stop
+                        ! end if
+                        ! !> read in tha1b_trac header
+                        ! read_tha_trac_header: do i = 1, ifile%nheader, 1
+                        !     read(ifile%unit, *) temp
+                        ! end do read_tha_trac_header
+                        ! !> read in tha1b_trac data
+                        ! read_tha_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                        !     read(ifile%unit, *) self%tha1b_trac(i)%gpst_intg, self%tha1b_trac(i)%gpst_frac, temp, temp, temp, &
+                        !                         self%tha1b_trac(i)%thruster_time, self%tha1b_trac(i)%accum_time
+                        !     !> assign the gpst
+                        !     self%tha1b_trac(i)%gpst = self%tha1b_trac(i)%gpst_intg + self%tha1b_trac(i)%gpst_frac * 1e-6_wp
+                        !     
+                        ! end do read_tha_trac_data
+                        ! call logger%info('phase_centre_vad', 'read in THA1B_B data successfully')                   
                     case ('ResultPath')
                     case ("TempPath")
                     case ("LogPath")
