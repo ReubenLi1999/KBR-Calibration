@@ -28,7 +28,7 @@ contains
 
         open(unit=self%unit, file=self%name, iostat=ios, status="old", action="read")
         if ( ios /= 0 ) then
-            call logger%fatal('io_file_module', 'Error opening'//trim(self%name))
+            call logger%fatal('io_file_module', 'Error opening '//trim(self%name))
             stop
         end if
 

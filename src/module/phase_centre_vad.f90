@@ -983,9 +983,9 @@ contains
         write(ofile%unit, "(8x, a)") "long_name: flag indicating whether the validation is valid"
         write(ofile%unit, "(a)") "# End of YAML header"
         if (trim(sat_id) == '_A_') then
-            write(ofile%unit, "(a, 1x, es11.5, 1x, l1)") "A", wp_ia_a, lg_a
+            write(ofile%unit, "(a, 1x, es12.5, 1x, l1)") "A", wp_ia_a, lg_a
         else
-            write(ofile%unit, "(a, 1x, es11.5, 1x, l1)") "B", wp_ia_b, lg_b
+            write(ofile%unit, "(a, 1x, es12.5, 1x, l1)") "B", wp_ia_b, lg_b
         end if
         
         close(unit=ofile%unit, iostat=ios)
@@ -1813,11 +1813,12 @@ contains
 
         type(parameterlistIterator_t)                    :: iterator
         type(io_file)                                    :: ifile
+        type(io_file), allocatable                       :: ifiles(:)
 
         character(len=3000)                              :: flags(20), key, temp
         CHARACTER(len=3000), ALLOCATABLE                 :: value(:)
 
-        integer(kind=ip)                                 :: i, ios, err, line, col, fplerror, ind
+        integer(kind=ip)                                 :: i, ios, err, line, col, fplerror, ind, ip_ndata
         integer(kind=ip), ALLOCATABLE                    :: shape(:)
         
         real(kind=wp)                                    :: reg, c_temp, s_temp
@@ -1833,16 +1834,6 @@ contains
                  'VAC1B-AFile', "VAC1B-BFile", &
                  'GSM', &
                  'ResultPath', 'TempPath', 'LogPath', 'ConfigPath']
-        ! flags = ['KBR1BFile', &
-        !          'ROI1B-AFile', 'ROI1B-BFile', &
-        !          'SCA1B-AFile', "SCA1B-BFile", &
-        !          'ACC1B-AFile', "ACC1B-BFile", &
-        !          'GKB1B-AFile', "GKB1B-BFile", &
-        !          'VAC1B-AFile', "VAC1B-BFile", &
-        !          'KBR1AFile', 'KHK1AFile', 'KHK1BFile', &
-        !          'THA1B-AFile', "THA1B-BFile", &
-        !          'GSM', &
-        !          'ResultPath', 'TempPath', 'LogPath', 'ConfigPath']
 
         iterator = dict%GetIterator()
         do while (.not. iterator%hasfinished())
@@ -1853,6 +1844,8 @@ contains
             !> allocate value
             allocate(value(shape(1)), stat=err)
             if (err /= 0) print *, "value(shape): Allocation request denied"
+            allocate(ifiles(shape(1)), stat=err)
+            if (err /= 0) print *, "ifiles: Allocation request denied"
 
             check_flag: if (.not. any(flags == key)) then
                 call logger%error('phase_centre_vad', 'data product flag error, please check the xml file')
@@ -1864,6 +1857,18 @@ contains
                 call xml_o%xml2file(1, "get the value of "//key//" error.")
                 stop
             end if
+
+            !> total lines
+            total_lines_loop: do i = 1, size(value), 1
+            !   > skip the directory
+                if (key == 'ResultPath' .or. key == "TempPath" .or. key == "LogPath" .or. key == "ConfigPath") then
+                    cycle
+                end if
+                !> init file obj
+                ifiles(i)%name = trim(value(i))
+                call ifiles(i)%file_obj_init()
+            end do total_lines_loop
+            
 
             !> init the file obj
             ifiles_loop: do ind = 1, size(value), 1
@@ -2122,30 +2127,56 @@ contains
                         end do read_sca_trac_data
                         call logger%info('phase_centre_vad', 'read in SCA1B_B data successfully')
                     case ('ACC1B-AFile')
-                        !> allocate the acc1b_lead array
-                        allocate(self%acc1b_lead(ifile%nrow - ifile%nheader), stat=err)
-                        if (err /= 0) then
-                            call logger%error('phase_centre_vad', "self%acc1b_lead: Allocation request denied")
-                            call xml_o%xml2file(1, "self%acc1b_lead: Allocation request denied")
-                            stop
-                        end if
-                        !> read in acc1b_lead header
-                        read_acc_lead_header: do i = 1, ifile%nheader, 1
-                            read(ifile%unit, *) temp
-                        end do read_acc_lead_header
-                        !> read in acc1b_lead data
-                        read_acc_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                            read(ifile%unit, *) self%acc1b_lead(i)%gpst_acc1b, temp , temp, &
-                                                self%acc1b_lead(i)%non_grav_acc
-                            if (i > 2_ip) then
-                                if (.not. isequal(self%acc1b_lead(i)%gpst_acc1b - self%acc1b_lead(i - 1)%gpst_acc1b, &
-                                                  self%acc1b_lead(i - 1)%gpst_acc1b - self%acc1b_lead(i - 2)%gpst_acc1b)) then
-                                    call logger%error("phase_centre_vad", "Time stamp gap occurred in ACC1B file for the leading satellite")
-                                    call xml_o%xml2file(1, "Time stamp gap occurred in ACC1B fil for the leading satellite")
-                                    stop
-                                end if
+                        if (ind == 1) then
+                            !> data lines in input files
+                            ip_ndata = 0_ip
+                            data_lines_acc_a: do i = 1, size(value), 1
+                                ip_ndata = ip_ndata + ifiles(i)%nrow - ifiles(i)%nheader
+                            end do data_lines_acc_a
+                            !> allocate the acc1b_lead array
+                            allocate(self%acc1b_lead(ip_ndata), stat=err)
+                            if (err /= 0) then
+                                call logger%error('phase_centre_vad', "self%acc1b_lead: Allocation request denied")
+                                call xml_o%xml2file(1, "self%acc1b_lead: Allocation request denied")
+                                stop
                             end if
-                        end do read_acc_lead_data
+                            !> read in acc1b_lead header
+                            read_acc_lead_header: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_acc_lead_header
+                            !> read in acc1b_lead data
+                            read_acc_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
+                                read(ifile%unit, *) self%acc1b_lead(i)%gpst_acc1b, temp , temp, &
+                                                    self%acc1b_lead(i)%non_grav_acc
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%acc1b_lead(i)%gpst_acc1b - self%acc1b_lead(i - 1)%gpst_acc1b, &
+                                                      self%acc1b_lead(i - 1)%gpst_acc1b - self%acc1b_lead(i - 2)%gpst_acc1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ACC1B file for the leading satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ACC1B fil for the leading satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_acc_lead_data
+                        else
+                            !> read in acc1b_lead header
+                            read_acc_lead_header_n: do i = 1, ifile%nheader, 1
+                                read(ifile%unit, *) temp
+                            end do read_acc_lead_header_n
+                            !> read in acc1b_lead data
+                            read_acc_lead_data_n: do i = ifiles(ind-1)%nrow-ifiles(ind-1)%nheader+1, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                                read(ifile%unit, *) self%acc1b_lead(i)%gpst_acc1b, temp , temp, &
+                                                    self%acc1b_lead(i)%non_grav_acc
+                                if (i > 2_ip) then
+                                    if (.not. isequal(self%acc1b_lead(i)%gpst_acc1b - self%acc1b_lead(i - 1)%gpst_acc1b, &
+                                                      self%acc1b_lead(i - 1)%gpst_acc1b - self%acc1b_lead(i - 2)%gpst_acc1b)) then
+                                        call logger%error("phase_centre_vad", "Time stamp gap occurred in ACC1B file for the leading satellite")
+                                        call xml_o%xml2file(1, "Time stamp gap occurred in ACC1B fil for the leading satellite")
+                                        stop
+                                    end if
+                                end if
+                            end do read_acc_lead_data_n
+                        end if
+                        
                         call logger%info('phase_centre_vad', 'read in ACC1B_A data successfully')
                     case ("ACC1B-BFile")
                         !> allocate the acc1b_trac array
@@ -2287,6 +2318,8 @@ contains
             end do ifiles_loop
             if (allocated(value)) deallocate(value, stat=err)
             if (err /= 0) print *, "value: Deallocation request denied"
+            if (allocated(ifiles)) deallocate(ifiles, stat=err)
+            if (err /= 0) print *, "ifiles: Deallocation request denied"
             call iterator%next()
         end do
         

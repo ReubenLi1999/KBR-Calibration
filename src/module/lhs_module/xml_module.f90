@@ -162,7 +162,7 @@ contains
     subroutine lhs_read_xml(self, date, version, i_maneuver_time)
         CLASS(xml_file) , INTENT(INOUT)                         :: self
         INTEGER(kind=ip)                                        :: ios, reason, fplerror
-        integer(kind=ip)                                        :: i, num_path, err
+        integer(kind=ip)                                        :: i, num_path, err, k
         integer(kind=ip)                                        :: left(2), right(2)
         integer(kind=ip)                                        :: i_gsm_dayofyear
         integer(kind=ip)                                        :: i_date_dayofyear
@@ -176,7 +176,7 @@ contains
         character(len=3000)                                     :: c_temp2, c_temp3, c_start_epoch, c_duration
         character(len=3000)                                     :: c_vkbrptfilename(2)
         CHARACTER(len=:)   , ALLOCATABLE                        :: path(:)
-        character(len=3000), ALLOCATABLE                        :: paths(:)
+        character(len=3000), ALLOCATABLE                        :: paths(:), c_path(:)
         CHARACTER(len=*), intent(  out)                         :: date, version
         character(len=3000)                                     :: result_path, vkbfile_name(2), config_path
         character(len=14)                                       :: datenow
@@ -404,25 +404,26 @@ contains
                     !> product flag
                     flag = temp1(left(1) + 1_ip: right(1) - 1_ip)
                     
-                    !> folder walk
-                    paths = folder_walk_win(temp1(right(1) + 1: left(2) - 1), flag)
-                    if (size(paths) == 0) Then
-                        call logger%fatal("math_collection_module", trim(flag)//" files not appear in "//temp1(right(1) + 1: left(2) - 1))
-                        call xml_o%xml2file(1, trim(flag)//" files not appear in the input folder")
-                        stop trim(flag)//" files not appear in the input folder"
-                    else 
-                        check_date_loop: do i = 1, size(paths), 1
-                            if (index(paths(i), trim(date)) == 0) then
-                                call xml_o%xml2file(1, trim(paths(i))//" date not compatible")
-                                stop trim(paths(i))//" date not compatible"
-                            end if
-                        end do check_date_loop
-                    end if
                     !> path array
-                    !call split(temp1(right(1) + 1: left(2) - 1), path, delimiters=',', order='sequential', nulls='ignore')
-                    fplerror = self%urlpaths%set(key=trim(flag), value=paths)
-                    DEALLOCATE(paths)
-                
+                    call split(temp1(right(1) + 1: left(2) - 1), path, delimiters=',', order='sequential', nulls='ignore')
+                    allocate(c_path(size(path)), stat=err)
+                    if (err /= 0) print *, "c_path: Allocation request denied"
+                    !> folder walk
+                    do k = 1, size(path), 1
+                        paths = folder_walk_win(path(k), flag)
+                        if (size(paths) /= 1) Then
+                            call logger%fatal("math_collection_module", trim(flag)//" files not appear in "//temp1(right(1) + 1: left(2) - 1))
+                            call xml_o%xml2file(1, trim(flag)//" files not appear in the input folder")
+                            stop trim(flag)//" files not appear in the input folder"
+                        end if
+                        c_path(k) = trim(paths(1))
+                    end do
+                    
+                    fplerror = self%urlpaths%set(key=trim(flag), value=c_path)
+                    if (ALLOCATED(paths)) DEALLOCATE(paths, stat=err)
+                    if (err /= 0) print *, "c_path: Deallocation request denied"
+                    if (allocated(c_path)) deallocate(c_path, stat=err)
+                    if (err /= 0) print *, "c_path: Deallocation request denied"
                 end do read_in_flag_path
             end if
             !> ExternalFileList
