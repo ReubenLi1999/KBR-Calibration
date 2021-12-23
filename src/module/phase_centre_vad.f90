@@ -305,6 +305,7 @@ contains
         integer(kind=ip)                                     :: i
 
 
+
     end subroutine solver_dynamics
 
     subroutine acc_grav(self)
@@ -313,7 +314,7 @@ contains
         integer(kind=ip)                                     :: i, ios
         real(kind=wp)                                        :: wp_acc_lead(3), wp_acc_trac(3)
         
-        open(unit=output_unit, file='..//temp//acc_grav_calibra1.txt', iostat=ios, status="unknown", action="write")
+        open(unit=output_unit, file='..//temp//acc_grav_calibra2.txt', iostat=ios, status="unknown", action="write")
         if ( ios /= 0 ) stop "Error opening file name"
         
         do i = 1, size(self%gps1b_lead), 1
@@ -608,16 +609,17 @@ contains
     !     
     ! end subroutine solve_phase_centre_vad_eq_freq
 
-    subroutine divide_jd(self, jd_i, index_span, i_mirror)
+    subroutine divide_jd(self, jd_i, i_index_span, i_mirror)
         class(satellite)     , intent(inout)              :: self
         type(satellite)      , INTENT(INOUT)              :: jd_i(:)
-        integer(kind=ip)     , INTENT(IN   )              :: index_span(:, :)
+        integer(kind=ip)     , INTENT(IN   )              :: i_index_span(:, :)
         integer(kind=ip)     , intent(in   )              :: i_mirror !< flag indicating mirror maneuver
                                                                       !< if [i_mirror=1] the equation of frequency domain will change its sign
         
         !> reg
-        integer(kind=ip)                                  :: i, err, length_span, j, fplerror
-        integer(kind=ip)                                  :: index_span_5(size(index_span, 1), size(index_span, 2))
+        integer(kind=ip)                                  :: i, err, length_span, j, fplerror, length_span_5
+        integer(kind=ip)                                  :: index_span_5(size(i_index_span, 1), size(i_index_span, 2))
+        integer(kind=ip)                                  :: index_span(size(i_index_span, 1), size(i_index_span, 2))
         integer(kind=ip)                                  :: nfilter
         CHARACTER(len=:), allocatable                     :: config_path
         real(kind=wp)                                     :: wp_normal_eqa_diff2(4, 4), wp_normal_eqb_diff2(4)
@@ -632,19 +634,24 @@ contains
         !> raw filter
         !> high pass filter filename
         fplerror = xml_i%urlpaths%GetAsString(key='ConfigPath', string=config_path)
-        
+
+        !> consider the uncertainty of the initial period
+        index_span = i_index_span
+        index_span(1, 1) = index_span(1, 1) + 151_ip
+        index_span(2, 1) = index_span(2, 1) + 151_ip
+        index_span(3, 1) = index_span(3, 1) + 151_ip
+        index_span(4, 1) = index_span(4, 1) + 151_ip
+
         !> time epoch to index
         assign_index_span_5: do i = 1, size(index_span, 1), 1
             do j = 1, size(index_span, 2), 1
                 if (mod(j, 2) == 0) then
-                    index_span_5(i, j) = index_span(i, j) / 5
+                    index_span_5(i, j) = floor(real(index_span(i, j), 16) / 5.0_wp) - 1_ip
                 else
-                    index_span_5(i, j) = ceiling(real(index_span(i, j), 16) / 5.0_wp)
+                    index_span_5(i, j) = ceiling(real(index_span(i, j), 16) / 5.0_wp) + 1_ip
                 end if
             end do
         end do assign_index_span_5
-
-        print *, self%kbr1b_both%gpst_kbr1b
         
         !> normal matrix for four algorithms
         wp_normal_eqa_diff2 = 0.0_wp
@@ -657,15 +664,16 @@ contains
         !> for jd-4: the motivation is along the pitch direction of the tracking satellite (x, z)46
         assign_jd_loop: do i = 1, 4, 1
             length_span = index_span(i, 2) - index_span(i, 1) + 1
-            allocate(jd_i(i)%acc1b_lead(1: length_span / 5), stat=err)
+            length_span_5 = index_span_5(i, 2) - index_span_5(i, 1) + 1
+            allocate(jd_i(i)%acc1b_lead(1: length_span_5), stat=err)
             if (err /= 0) print *, "jd(i)%acc1b_lead: Allocation request denied"
-            allocate(jd_i(i)%acc1b_trac(1: length_span / 5), stat=err)
+            allocate(jd_i(i)%acc1b_trac(1: length_span_5), stat=err)
             if (err /= 0) print *, "jd(i)%acc1b_trac: Allocation request denied"
-            allocate(jd_i(i)%kbr1b_both(1: length_span / 5), stat=err)
+            allocate(jd_i(i)%kbr1b_both(1: length_span_5), stat=err)
             if (err /= 0) print *, "jd(i)%kbr1b_both: Allocation request denied"
-            allocate(jd_i(i)%kbr1b_2degdiff(1: length_span / 5 - 2), stat=err)
+            allocate(jd_i(i)%kbr1b_2degdiff(1: length_span_5 - 2), stat=err)
             if (err /= 0) print *, "jd(i)%kbr1b_2defdiff: Allocation request denied"
-            allocate(jd_i(i)%kbr1b_3degdiff(1: length_span / 5 - 3), stat=err)
+            allocate(jd_i(i)%kbr1b_3degdiff(1: length_span_5 - 3), stat=err)
             if (err /= 0) print *, "jd(i)%kbr1b_3degediff: Allocation request denied"
             allocate(jd_i(i)%sca1b_lead(1: length_span), stat=err)
             if (err /= 0) print *, "jd(i)%sca1b_lead: Allocation request denied"
@@ -686,10 +694,6 @@ contains
             jd_i(i)%sca1b_trac = self%sca1b_trac(index_span(i, 1): index_span(i, 2))
             
             !>--------------------------------------------------------------------------------------
-            !> trajectory forward
-            ! call jd_i(i)%trajectory_forward(i)
-            
-            !>--------------------------------------------------------------------------------------
             !> create equations
             call jd_i(i)%create_phase_centre_vad_eq(i)
             
@@ -707,11 +711,12 @@ contains
             wp_eqb_diff2 = jd_i(i)%kbr1b_2degdiff%eq_b
             call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff2, 0.2_wp, &
                            jd_i(i)%kbr1b_2degdiff%eq_b, nfilter)
+
             !> diff-3
             wp_eqb_diff3 = jd_i(i)%kbr1b_3degdiff%eq_b
             call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff3, 0.2_wp, &
                            jd_i(i)%kbr1b_3degdiff%eq_b, nfilter)
-            
+
             !> high pass filter for the model matrix separately
             do j = 1, 6, 1
                 !> diff-2
@@ -756,8 +761,7 @@ contains
                         jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
                     else
                         jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
-                    end if
-                    !> solve the linear equation system
+                    end if!> solve the linear equation system
                     self%inverse_vector(1, 2) = (jd_i(i)%wp_amp_freq(1, 3) - self%initial_vector(1) * jd_i(i)%wp_amp_freq(1, 1)) / jd_i(i)%wp_amp_freq(1, 2)
                     
                     !> diff3
@@ -913,6 +917,9 @@ contains
         self%inverse_vector(4, 4) = self%initial_vector(4)
         self%inverse_vector(3, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff2, wp_normal_eqb_diff2)
         self%inverse_vector(4, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff3, wp_normal_eqb_diff3)
+        print *, self%inverse_vector(1, :), self%inverse_vector(2, :)
+        print *, self%inverse_vector(3, :), self%inverse_vector(4, :)
+
 
         !> expectation
         expectation_loop: do i = 1, 6, 1
@@ -1295,10 +1302,10 @@ contains
     subroutine create_phase_centre_vad_eq(self, i_index_motiv)
         class(satellite)    , INTENT(INOUT)                  :: self
         integer(kind=ip)    , INTENT(IN   ), OPTIONAL        :: i_index_motiv
-        type(hashtable)                                      :: q_scac, q_scad
+        type(hashtable)                                      :: q_scac, q_scad, q_gnva, q_gnvb
         integer(kind=ip)                                     :: i, ios, j, istat
-        integer(kind=ip)                                     :: tkbr, tscac, tscad
-        real(kind=wp), ALLOCATABLE                           :: q_c(:), q_d(:)
+        integer(kind=ip)                                     :: tkbr, tscac, tscad, tgnva, tgnvb
+        real(kind=wp), ALLOCATABLE                           :: q_c(:), q_d(:), i_c(:), i_d(:)
         real(kind=wp)                                        :: range_res_ave
         real(kind=wp)                                        :: temp
         real(kind=wp)                                        :: intersatellite_range(size(self%kbr1b_both))
@@ -1333,20 +1340,54 @@ contains
         !     self%kbr1b_both(i)%range_simu = norm2(self%kbr1b_both(i)%pos_i_lead - self%kbr1b_both(i)%pos_i_trac)
         !     !write(424, '(6f30.15)') self%kbr1b_both(i)%pos_i_lead, self%kbr1b_both(i)%pos_i_trac
         ! end do simu_range
+
+        !> obtain position vector in the inertial frame
+        !> using hash table
+        call q_gnva%init(nitems=size(self%gps1b_lead))
+        call q_gnvb%init(nitems=size(self%gps1b_trac))
+
+        !> check if the nrows of sca_lead and sca_track are the same
+        if (size(self%gps1b_lead) /= size(self%gps1b_trac)) then
+            call logger%error('phase_centre_vad', 'the number of lines of two SCA files are different')
+            call xml_o%xml2file(1, 'the number of lines of two SCA files are different')
+            stop
+        end if
         
-        assign_pos_loop: do i = 1, 3, 1
-            self%kbr1b_both%pos_i_lead(i) = self%gps1b_lead(1: size(self%gps1b_lead): 5)%pos_i(i)
-            self%kbr1b_both%pos_i_trac(i) = self%gps1b_trac(1: size(self%gps1b_trac): 5)%pos_i(i)
-        end do assign_pos_loop
-        pod_range: do i = 1, size(self%kbr1b_both), 1
+        put_gps_value: do i = 1, size(self%gps1b_lead), 1
+            tgnva = int(self%gps1b_lead(i)%gpst_gps1b)
+            tgnvb = int(self%gps1b_trac(i)%gpst_gps1b)
+            call q_gnva%put(key=tgnva, rvals=self%gps1b_lead(i)%pos_i)
+            call q_gnvb%put(key=tgnvb, rvals=self%gps1b_trac(i)%pos_i)
+        end do put_gps_value
+
+        create_eqb: do i = 1, size(self%kbr1b_both), 1
+            !> quaternion to rotation matrix section
+            tkbr = int(self%kbr1b_both(i)%gpst_kbr1b)
+            if (q_gnva%has_key(tkbr)) then
+                call q_gnva%get(key=tkbr, rvals=i_c)
+                self%kbr1b_both(i)%pos_i_lead = i_c
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
+                call xml_o%xml2file(1, 'time tags of KBR data and KOE data not compatible')
+                stop
+            end if
+            if (q_gnvb%has_key(tkbr)) then
+                call q_gnvb%get(key=tkbr, rvals=i_d)
+                self%kbr1b_both(i)%pos_i_trac = i_d
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
+                call xml_o%xml2file(1, "time tags of KBR data and KOE data not compatible")
+                stop
+            end if
             self%kbr1b_both(i)%range_pod = norm2(self%kbr1b_both(i)%pos_i_lead - self%kbr1b_both(i)%pos_i_trac)
-        end do pod_range
+        end do create_eqb
+
         !close(424)
         !stop
 
         !> calculate the residual between the biased range from KBR and the simulated inter-satellite range
         ! self%kbr1b_both%range_resi = -self%kbr1b_both%range + self%kbr1b_both%tof_range + self%kbr1b_both%range_simu
-        self%kbr1b_both%range_resi = -self%kbr1b_both%range + self%kbr1b_both%tof_range + self%kbr1b_both%range_pod
+        self%kbr1b_both%range_resi = self%kbr1b_both%range + self%kbr1b_both%tof_range - self%kbr1b_both%range_pod
         ! call plt%initialize()
         ! call plt%add_plot(self%kbr1b_both%gpst_kbr1b, self%kbr1b_both%range_simu, label='$\sin(x)$', linestyle='b-o',markersize=5,linewidth=2, istat=istat)
         ! call plt%savefig('sinx.png', pyfile='sinx.py', ismat=.true., istat=istat)
@@ -1390,7 +1431,7 @@ contains
             stop
         end if
         
-        put_sca_value: do i = 1, size(self%sca1b_lead), 5
+        put_sca_value: do i = 1, size(self%sca1b_lead), 1
             tscac = int(self%sca1b_lead(i)%gpst_sca1b)
             tscad = int(self%sca1b_trac(i)%gpst_sca1b)
             call q_scac%put(key=tscac, rvals=self%sca1b_lead(i)%quaternion)
@@ -1430,23 +1471,25 @@ contains
             end if
 
             !> assign matrix A in Ax=b
-            self%kbr1b_both(i)%eq_a(1: 3) = -matmul(self%kbr1b_both(i)%los_t2l, self%kbr1b_both(i)%rotm_c_s2i)
-            self%kbr1b_both(i)%eq_a(4: 6) = -matmul(self%kbr1b_both(i)%los_l2t, self%kbr1b_both(i)%rotm_d_s2i)
+            self%kbr1b_both(i)%eq_a(1: 3) = matmul(self%kbr1b_both(i)%los_l2t, self%kbr1b_both(i)%rotm_c_s2i)
+            self%kbr1b_both(i)%eq_a(4: 6) = matmul(self%kbr1b_both(i)%los_t2l, self%kbr1b_both(i)%rotm_d_s2i)
             ! print *, self%kbr1b_both(i)%eq_a(1: 3)
 
             ! write(424, '(10f40.20)') self%kbr1b_both(i)%eq_a
         end do create_eq
-
         !> -----------------------------------------------------------------------------------------
         ! close(unit=424, iostat=ios)
         ! if ( ios /= 0 ) stop "Error closing file unit 424"
         !> -----------------------------------------------------------------------------------------
 
         !> simulate the antenna phase correction
-        call self%simu_ant_phase_corr()
+        ! call self%simu_ant_phase_corr()
 
         !> assign array b in Ax=b
         self%kbr1b_both%eq_b = self%kbr1b_both%range_resi
+
+
+        !>------------------------------------------------------------------------------------------
         !> output eq_b
         ! open(unit=424, file='..//temp//eq_b_'//datenow//'.txt', iostat=ios, status="unknown", position="append")
         ! if ( ios /= 0 ) stop "Error opening file name"
@@ -1454,7 +1497,7 @@ contains
         !     write(424, *) self%kbr1b_both(i)%eq_b
         ! end do write2file_eq_b
         ! close(424)
-        
+
         !> create equation for 2-degree diff and 3-degree diff
         create_2degdiff_loop: do i = 1, size(self%kbr1b_2degdiff), 1
             self%kbr1b_2degdiff(i)%eq_a = self%kbr1b_both(i + 2)%eq_a + self%kbr1b_both(i)%eq_a - 2.0_wp * self%kbr1b_both(i + 1)%eq_a
@@ -2005,7 +2048,7 @@ contains
                             end do read_kbr_header
                             !> read in kbr data
                             read_kbr_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                                read(ifile%unit, *) self%kbr1b_both(i)%gpst_kbr1b, self%kbr1b_both(i)%range, &
+                                read(ifile%unit, *) self%kbr1b_both(i)%gpst_kbr1b, temp, self%kbr1b_both(i)%range, &
                                                     self%kbr1b_both(i)%range_rate, self%kbr1b_both(i)%range_accl, &
                                                     self%kbr1b_both(i)%iono_corr,  self%kbr1b_both(i)%tof_range, &
                                                     self%kbr1b_both(i)%tof_rate,   self%kbr1b_both(i)%tof_accl
@@ -2025,7 +2068,7 @@ contains
                             end do read_kbr_header_n
                             !> read in kbr data
                             read_kbr_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
-                                read(ifile%unit, *) self%kbr1b_both(i)%gpst_kbr1b, self%kbr1b_both(i)%range, &
+                                read(ifile%unit, *) self%kbr1b_both(i)%gpst_kbr1b, temp, self%kbr1b_both(i)%range, &
                                                     self%kbr1b_both(i)%range_rate, self%kbr1b_both(i)%range_accl, &
                                                     self%kbr1b_both(i)%iono_corr,  self%kbr1b_both(i)%tof_range, &
                                                     self%kbr1b_both(i)%tof_rate,   self%kbr1b_both(i)%tof_accl
@@ -2044,7 +2087,6 @@ contains
                                     i_maneuver_time(i) = i_maneuver_time(i) - self%kbr1b_both(1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader)%gpst_kbr1b + 1_ip + self%kbr1b_both(ifiles(ind-1)%nrow-ifiles(ind-1)%nheader)%gpst_kbr1b
                                 end if
                             end do sub_man_loop
-                            print *, i_maneuver_time
                         end if
                         call logger%info('phase_centre_vad', 'read in KBR1B_X data successfully')
                     case ('ROI1B-AFile')
@@ -2069,7 +2111,7 @@ contains
                             end do read_gni_lead_header
                             !> read in gps1b_lead data
                             read_gni_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, &
+                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_lead(i)%pos_i, reg, reg, reg,&
                                                     self%gps1b_lead(i)%vel_i
                                 if (i > 2_ip) then
@@ -2088,7 +2130,7 @@ contains
                             end do read_gni_lead_header_n
                             !> read in gps1b_lead data
                             read_gni_lead_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
-                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, &
+                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_lead(i)%pos_i, reg, reg, reg,&
                                                     self%gps1b_lead(i)%vel_i
                                 if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
@@ -2124,7 +2166,7 @@ contains
                             end do read_gni_trac_header
                             !> read in gps1b_trac data
                             read_gni_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, &
+                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_trac(i)%pos_i, reg, reg, reg, &
                                                     self%gps1b_trac(i)%vel_i
                                 if (i > 2_ip) then
@@ -2143,7 +2185,7 @@ contains
                             end do read_gni_trac_header_n
                             !> read in gps1b_trac data
                             read_gni_trac_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
-                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, &
+                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_trac(i)%pos_i, reg, reg, reg, &
                                                     self%gps1b_trac(i)%vel_i
                                 if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
@@ -2180,7 +2222,7 @@ contains
                             end do read_gnv_lead_header
                             !> read in gps1b_lead data
                             read_gnv_lead_data: do i = 1, ifile%nrow-ifile%nheader, 1
-                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, &
+                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_lead(i)%pos_e, reg, reg, reg,&
                                                     self%gps1b_lead(i)%vel_e
                                 if (i > 2_ip) then
@@ -2199,7 +2241,7 @@ contains
                             end do read_gnv_lead_header_n
                             !> read in gps1b_lead data
                             read_gnv_lead_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
-                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, &
+                                read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_lead(i)%pos_e, reg, reg, reg,&
                                                     self%gps1b_lead(i)%vel_e
                                 if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
@@ -2235,7 +2277,7 @@ contains
                             end do read_gnv_trac_header
                             !> read in gps1b_trac data
                             read_gnv_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, &
+                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_trac(i)%pos_e, reg, reg, reg, &
                                                     self%gps1b_trac(i)%vel_e
                                 if (i > 2_ip) then
@@ -2254,7 +2296,7 @@ contains
                             end do read_gnv_trac_header_n
                             !> read in gps1b_trac data
                             read_gnv_trac_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
-                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, &
+                                read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_trac(i)%pos_e, reg, reg, reg, &
                                                     self%gps1b_trac(i)%vel_e
                                 if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
@@ -2289,7 +2331,7 @@ contains
                             end do read_sca_lead_header
                             !> read in sca1b_lead data
                             read_sca_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                                read(ifile%unit, *) self%sca1b_lead(i)%gpst_sca1b, temp, reg, &
+                                read(ifile%unit, *) self%sca1b_lead(i)%gpst_sca1b, temp, temp, reg, &
                                                     self%sca1b_lead(i)%quaternion
                                 !> convert quaternion to rotation matrix
                                 self%sca1b_lead(i)%rotm_i2s = q2m(self%sca1b_lead(i)%quaternion)
@@ -2311,7 +2353,7 @@ contains
                             end do read_sca_lead_header_n
                             !> read in sca1b_lead data
                             read_sca_lead_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
-                                read(ifile%unit, *) self%sca1b_lead(i)%gpst_sca1b, temp, reg, &
+                                read(ifile%unit, *) self%sca1b_lead(i)%gpst_sca1b, temp, temp, reg, &
                                                     self%sca1b_lead(i)%quaternion
                                 !> convert quaternion to rotation matrix
                                 self%sca1b_lead(i)%rotm_i2s = q2m(self%sca1b_lead(i)%quaternion)
@@ -2348,7 +2390,7 @@ contains
                             end do read_sca_trac_header
                             !> read in sca1b_trac data
                             read_sca_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                                read(ifile%unit, *) self%sca1b_trac(i)%gpst_sca1b, temp, reg, &
+                                read(ifile%unit, *) self%sca1b_trac(i)%gpst_sca1b, temp, temp, reg, &
                                                     self%sca1b_trac(i)%quaternion
                                 !> convert quaternion to rotation matrix
                                 self%sca1b_trac(i)%rotm_i2s = q2m(self%sca1b_trac(i)%quaternion)
@@ -2370,7 +2412,7 @@ contains
                             end do read_sca_trac_header_n
                             !> read in sca1b_trac data
                             read_sca_trac_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
-                                read(ifile%unit, *) self%sca1b_trac(i)%gpst_sca1b, temp, reg, &
+                                read(ifile%unit, *) self%sca1b_trac(i)%gpst_sca1b, temp, temp, reg, &
                                                     self%sca1b_trac(i)%quaternion
                                 !> convert quaternion to rotation matrix
                                 self%sca1b_trac(i)%rotm_i2s = q2m(self%sca1b_trac(i)%quaternion)
@@ -2407,7 +2449,7 @@ contains
                             end do read_acc_lead_header
                             !> read in acc1b_lead data
                             read_acc_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                                read(ifile%unit, *) self%acc1b_lead(i)%gpst_acc1b, temp, &
+                                read(ifile%unit, *) self%acc1b_lead(i)%gpst_acc1b, temp, temp, &
                                                     self%acc1b_lead(i)%non_grav_acc
                             end do read_acc_lead_data
                         else
@@ -2417,7 +2459,7 @@ contains
                             end do read_acc_lead_header_n
                             !> read in acc1b_lead data
                             read_acc_lead_data_n: do i = ifiles(ind-1)%nrow-ifiles(ind-1)%nheader+1, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
-                                read(ifile%unit, *) self%acc1b_lead(i)%gpst_acc1b, temp, &
+                                read(ifile%unit, *) self%acc1b_lead(i)%gpst_acc1b, temp, temp, &
                                                     self%acc1b_lead(i)%non_grav_acc
                             end do read_acc_lead_data_n
                         end if
@@ -2443,7 +2485,7 @@ contains
                             end do read_acc_trac_header
                             !> read in acc1b_trac data
                             read_acc_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
-                                read(ifile%unit, *) self%acc1b_trac(i)%gpst_acc1b, temp, &
+                                read(ifile%unit, *) self%acc1b_trac(i)%gpst_acc1b, temp, temp, &
                                                     self%acc1b_trac(i)%non_grav_acc
                             end do read_acc_trac_data
                         else
@@ -2453,7 +2495,7 @@ contains
                             end do read_acc_trac_header_n
                             !> read in acc1b_trac data
                             read_acc_trac_data_n: do i = ifiles(ind-1)%nrow-ifiles(ind-1)%nheader+1, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
-                                read(ifile%unit, *) self%acc1b_trac(i)%gpst_acc1b, temp, &
+                                read(ifile%unit, *) self%acc1b_trac(i)%gpst_acc1b, temp, temp, &
                                                     self%acc1b_trac(i)%non_grav_acc
                             end do read_acc_trac_data_n
                         end if
