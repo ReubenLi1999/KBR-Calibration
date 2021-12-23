@@ -250,7 +250,7 @@ contains
                                        i_date_num(5), i_date_num(6))
                 delta_man1 = man1 - start_epoch
                 i_start_epoch = delta_man1%total_seconds()
-                i_maneuver_time(1) = i_start_epoch + 18_ip
+                i_maneuver_time(1) = i_start_epoch + 18_ip - 28800_ip
             end if
             if (index(temp1, "<ManeuverDuration-1>") /= 0) then
                 !> the index of "<" and ">"
@@ -275,7 +275,7 @@ contains
                                        i_date_num(5), i_date_num(6))
                 delta_man2 = man2 - start_epoch
                 i_start_epoch = delta_man2%total_seconds()
-                i_maneuver_time(3) = i_start_epoch + 18_ip
+                i_maneuver_time(3) = i_start_epoch + 18_ip - 28800_ip
             end if
             if (index(temp1, "<ManeuverDuration-2>") /= 0) then
                 !> the index of "<" and ">"
@@ -300,7 +300,7 @@ contains
                                        i_date_num(5), i_date_num(6))
                 delta_man3 = man3 - start_epoch
                 i_start_epoch = delta_man3%total_seconds()
-                i_maneuver_time(5) = i_start_epoch + 18_ip
+                i_maneuver_time(5) = i_start_epoch + 18_ip - 28800_ip
             end if
             if (index(temp1, "<ManeuverDuration-3>") /= 0) then
                 !> the index of "<" and ">"
@@ -325,7 +325,7 @@ contains
                                        i_date_num(5), i_date_num(6))
                 delta_man4 = man4 - start_epoch
                 i_start_epoch = delta_man4%total_seconds()
-                i_maneuver_time(7) = i_start_epoch + 18_ip
+                i_maneuver_time(7) = i_start_epoch + 18_ip - 28800_ip
             end if
             if (index(temp1, "<ManeuverDuration-4>") /= 0) then
                 !> the index of "<" and ">"
