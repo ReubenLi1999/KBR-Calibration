@@ -199,7 +199,7 @@ module phase_centre_vad
         !> gkb1b file data, indicating the phase centre vector for the Ka band microwave
         real(kind=wp)                                        :: inverse_vector_expe(6)
         !> the phase centre vector validated in-orbit
-        real(kind=wp)                                        :: inverse_vector(4, 6)
+        real(kind=wp)                                        :: inverse_vector(4, 6), inverse_vector_n(4, 6)
         !> calibration res using 4 different methods
         real(kind=wp)                                        :: error(2)
         !> error for the inverse problem
@@ -301,10 +301,270 @@ contains
     subroutine solver_dynamics(self)
         class(satellite)                , intent(inout)      :: self
 
-        !> args
-        integer(kind=ip)                                     :: i
+        !> local args
+        integer(kind=ip)                                  :: i, err, length_span, j, fplerror, length_span_5
+        integer(kind=ip)                                  :: index_span_5(size(i_index_span, 1), size(i_index_span, 2))
+        integer(kind=ip)                                  :: index_span(size(i_index_span, 1), size(i_index_span, 2))
+        integer(kind=ip)                                  :: nfilter
+        CHARACTER(len=:), allocatable                     :: config_path
+        real(kind=wp)                                     :: wp_normal_eqa_diff2(4, 4), wp_normal_eqb_diff2(4)
+        real(kind=wp)                                     :: wp_normal_eqa_diff3(4, 4), wp_normal_eqb_diff3(4)
+        real(kind=wp)                                     :: wp_x(4) = 0.0_wp, wp_temp(2)
+        real(kind=wp), allocatable                        :: wp_eqa_diff2(:, :), wp_eqa_diff3(:, :)
+        real(kind=wp), allocatable                        :: wp_eqb_diff2(:), wp_eqb_diff3(:)
+        real(kind=wp)                                     :: wp_nonsens_eqa(2, 4) !< the amplitude of four non-sensitive axises at
+                                                                                  !< signal frequency and doubled signal frequency
+        
+        type(pyplot)                                      :: plt
 
+        !> normal matrix for four algorithms
+        wp_normal_eqa_diff2 = 0.0_wp
+        wp_normal_eqb_diff2 = 0.0_wp
+        wp_normal_eqa_diff3 = 0.0_wp
+        wp_normal_eqb_diff3 = 0.0_wp
+        !> for jd-1: the motivation is along the yaw direction of the leading satellite (x, y)12
+        !> for jd-2: the motivation is along the pitch direction of the leading satellite (x, z)13
+        !> for jd-3: the motivation is along the yaw direction of the tracking satellite (x, y)45
+        !> for jd-4: the motivation is along the pitch direction of the tracking satellite (x, z)46
+        assign_jd_loop: do i = 1, 4, 1
+            length_span = index_span(i, 2) - index_span(i, 1) + 1
+            length_span_5 = index_span_5(i, 2) - index_span_5(i, 1) + 1
+            allocate(jd_i(i)%acc1b_lead(1: length_span_5), stat=err)
+            if (err /= 0) print *, "jd(i)%acc1b_lead: Allocation request denied"
+            allocate(jd_i(i)%acc1b_trac(1: length_span_5), stat=err)
+            if (err /= 0) print *, "jd(i)%acc1b_trac: Allocation request denied"
+            allocate(jd_i(i)%kbr1b_both(1: length_span_5), stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_both: Allocation request denied"
+            allocate(jd_i(i)%kbr1b_2degdiff(1: length_span_5 - 2), stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_2defdiff: Allocation request denied"
+            allocate(jd_i(i)%kbr1b_3degdiff(1: length_span_5 - 3), stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_3degediff: Allocation request denied"
+            allocate(jd_i(i)%sca1b_lead(1: length_span), stat=err)
+            if (err /= 0) print *, "jd(i)%sca1b_lead: Allocation request denied"
+            allocate(jd_i(i)%sca1b_trac(1: length_span), stat=err)
+            if (err /= 0) print *, "jd(i)%sca1b_trac: Allocation request denied"
+            allocate(jd_i(i)%gps1b_lead(1: length_span), stat=err)
+            if (err /= 0) print *, "jd(i)%gps1b_lead: Allocation request denied"
+            allocate(jd_i(i)%gps1b_trac(1: length_span), stat=err)
+            if (err /= 0) print *, "jd(i)%gps1b_trac: Allocation request denied"
+            
+            !> necesary assignment
+            jd_i(i)%kbr1b_both = self%kbr1b_both(index_span_5(i, 1): index_span_5(i, 2))
+            jd_i(i)%acc1b_lead = self%acc1b_lead(index_span_5(i, 1): index_span_5(i, 2))
+            jd_i(i)%acc1b_trac = self%acc1b_trac(index_span_5(i, 1): index_span_5(i, 2))
+            jd_i(i)%gps1b_lead = self%gps1b_lead(index_span(i, 1): index_span(i, 2))
+            jd_i(i)%gps1b_trac = self%gps1b_trac(index_span(i, 1): index_span(i, 2))
+            jd_i(i)%sca1b_lead = self%sca1b_lead(index_span(i, 1): index_span(i, 2))
+            jd_i(i)%sca1b_trac = self%sca1b_trac(index_span(i, 1): index_span(i, 2))
+            
+            !>--------------------------------------------------------------------------------------
+            !> create equations
+            call jd_i(i)%create_phase_centre_vad_eq(i)
+            
+            allocate(wp_eqa_diff2(size(jd_i(i)%kbr1b_2degdiff), 6), stat=err)
+            if (err /= 0) print *, "wp_eqa_diff2: Allocation request denied"
+            allocate(wp_eqa_diff3(size(jd_i(i)%kbr1b_3degdiff), 6), stat=err)
+            if (err /= 0) print *, "wp_eqa_diff3: Allocation request denied"
+            allocate(wp_eqb_diff2(size(jd_i(i)%kbr1b_2degdiff)), stat=err)
+            if (err /= 0) print *, "wp_eqb_diff2: Allocation request denied"
+            allocate(wp_eqb_diff3(size(jd_i(i)%kbr1b_3degdiff)), stat=err)
+            if (err /= 0) print *, "wp_eqb_diff3: Allocation request denied"
+            
+            !> high pass filter for the data vector
+            !> diff-2
+            wp_eqb_diff2 = jd_i(i)%kbr1b_2degdiff%eq_b
+            call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff2, 0.2_wp, &
+                           jd_i(i)%kbr1b_2degdiff%eq_b, nfilter)
 
+            !> diff-3
+            wp_eqb_diff3 = jd_i(i)%kbr1b_3degdiff%eq_b
+            call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff3, 0.2_wp, &
+                           jd_i(i)%kbr1b_3degdiff%eq_b, nfilter)
+
+            !> high pass filter for the model matrix separately
+            do j = 1, 6, 1
+                !> diff-2
+                wp_eqb_diff2 = jd_i(i)%kbr1b_2degdiff%eq_a(j)
+                call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff2, 0.2_wp, &
+                           wp_eqa_diff2(:, j), nfilter)
+                !> diff-3
+                wp_eqb_diff3 = jd_i(i)%kbr1b_3degdiff%eq_a(j)
+                call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff3, 0.2_wp, &
+                           wp_eqa_diff3(:, j), nfilter)
+            end do
+
+            !> normal equation for diff-2 and diff-3 in the time domain
+            wp_normal_eqa_diff2 = wp_normal_eqa_diff2 + matmul(TRANSPOSE(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6])), &
+                                                               wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6]))
+            wp_normal_eqb_diff2 = wp_normal_eqb_diff2 + matmul(TRANSPOSE(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6])), &
+                                                               jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
+                                                      - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 4]), [self%initial_vector(1), self%initial_vector(4)]))
+            wp_normal_eqa_diff3 = wp_normal_eqa_diff3 + matmul(TRANSPOSE(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6])), &
+                                                               wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6]))
+            wp_normal_eqb_diff3 = wp_normal_eqb_diff3 + matmul(TRANSPOSE(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6])), &
+                                                               jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b &
+                                                      - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 4]), [self%initial_vector(1), self%initial_vector(4)]))
+            
+            !> identify the amplitude of the Fourier component at the maneuver frequency and doubled maneuver frequency
+            call jd_i(i)%amp_identification(jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b, &
+                                            jd_i(i)%wp_amp_freq(:, 3))
+            call jd_i(i)%amp_identification(jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b, &
+                                            jd_i(i)%wp_amp_freq(:, 4))
+            
+            !> solver for the two algorithms separately in the frequency domain
+            select case (i)
+                case (1)
+                    !> diff2
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 1), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if!> solve the linear equation system
+                    self%inverse_vector(1, 2) = (jd_i(i)%wp_amp_freq(1, 3) - self%initial_vector(1) * jd_i(i)%wp_amp_freq(1, 1)) / jd_i(i)%wp_amp_freq(1, 2)
+                    
+                    !> diff3
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 1), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(2, 2) = (jd_i(i)%wp_amp_freq(1, 4) - self%initial_vector(1) * jd_i(i)%wp_amp_freq(1, 1)) / jd_i(i)%wp_amp_freq(1, 2)
+                case (2)
+                    !> diff2
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 1), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(1, 3) = (jd_i(i)%wp_amp_freq(1, 3) - self%initial_vector(1) * jd_i(i)%wp_amp_freq(1, 1)) / jd_i(i)%wp_amp_freq(1, 2)
+                    self%inverse_vector(1, 1) = self%initial_vector(1)
+                    !> diff3
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 1), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(2, 3) = (jd_i(i)%wp_amp_freq(1, 4) - self%initial_vector(1) * jd_i(i)%wp_amp_freq(1, 1)) / jd_i(i)%wp_amp_freq(1, 2)
+                    self%inverse_vector(2, 1) = self%initial_vector(1)
+                case (3)
+                    !> diff2
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 4), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(1, 5) = (jd_i(i)%wp_amp_freq(1, 3) - self%initial_vector(4) * jd_i(i)%wp_amp_freq(1, 1)) / jd_i(i)%wp_amp_freq(1, 2)
+                    !> diff3
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 4), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(2, 5) = (jd_i(i)%wp_amp_freq(1, 4) - self%initial_vector(4) * jd_i(i)%wp_amp_freq(1, 1)) / jd_i(i)%wp_amp_freq(1, 2)
+                case (4)
+                    !> diff2
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 4), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(1, 6) = (jd_i(i)%wp_amp_freq(1, 3) - self%initial_vector(4) * jd_i(i)%wp_amp_freq(1, 1)) / jd_i(i)%wp_amp_freq(1, 2)
+                    self%inverse_vector(1, 4) = self%initial_vector(4)
+                    !> diff3
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 4), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(2, 6) = (jd_i(i)%wp_amp_freq(1, 4) - self%initial_vector(4) * jd_i(i)%wp_amp_freq(1, 1)) / jd_i(i)%wp_amp_freq(1, 2)
+                    self%inverse_vector(2, 4) = self%initial_vector(4)
+                case default
+            end select
+
+            if (allocated(wp_eqa_diff2)) deallocate(wp_eqa_diff2, stat=err)
+            if (err /= 0) print *, "wp_eqa_diff2: Deallocation request denied"
+            if (allocated(wp_eqa_diff3)) deallocate(wp_eqa_diff3, stat=err)
+            if (err /= 0) print *, "wp_eqa_diff3: Deallocation request denied"
+            if (allocated(wp_eqb_diff2)) deallocate(wp_eqb_diff2, stat=err)
+            if (err /= 0) print *, "wp_eqb_diff2: Deallocation request denied"
+            if (allocated(wp_eqb_diff3)) deallocate(wp_eqb_diff3, stat=err)
+            if (err /= 0) print *, "wp_eqb_diff3: Deallocation request denied"
+            
+            !> deallocate
+            if (allocated(jd_i(i)%gps1b_trac)) deallocate(jd_i(i)%gps1b_trac, stat=err)
+            if (err /= 0) print *, "jd(i)%gps1b_trac: Deallocation request denied"
+            if (allocated(jd_i(i)%gps1b_lead)) deallocate(jd_i(i)%gps1b_lead, stat=err)
+            if (err /= 0) print *, "jd(i)%gps1b_lead: Deallocation request denied"
+            if (allocated(jd_i(i)%sca1b_trac)) deallocate(jd_i(i)%sca1b_trac, stat=err)
+            if (err /= 0) print *, "jd(i)%sca1b_trac: Deallocation request denied"
+            if (allocated(jd_i(i)%sca1b_lead)) deallocate(jd_i(i)%sca1b_lead, stat=err)
+            if (err /= 0) print *, "jd(i)%sca1b_lead: Deallocation request denied"
+            if (allocated(jd_i(i)%kbr1b_both)) deallocate(jd_i(i)%kbr1b_both, stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_both: Deallocation request denied"
+            if (allocated(jd_i(i)%acc1b_lead)) deallocate(jd_i(i)%acc1b_lead, stat=err)
+            if (err /= 0) print *, "jd(i)%acc1b_lead: Deallocation request denied"
+            if (allocated(jd_i(i)%acc1b_trac)) deallocate(jd_i(i)%acc1b_trac, stat=err)
+            if (err /= 0) print *, "jd(i)%acc1b_trac: Deallocation request denied"
+            if (allocated(jd_i(i)%kbr1b_2degdiff)) deallocate(jd_i(i)%kbr1b_2degdiff, stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_2degdiff: Deallocation request denied"
+            if (allocated(jd_i(i)%kbr1b_3degdiff)) deallocate(jd_i(i)%kbr1b_3degdiff, stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_3degdiff: Deallocation request denied"
+        end do assign_jd_loop
 
     end subroutine solver_dynamics
 
@@ -627,6 +887,8 @@ contains
         real(kind=wp)                                     :: wp_x(4) = 0.0_wp, wp_temp(2)
         real(kind=wp), allocatable                        :: wp_eqa_diff2(:, :), wp_eqa_diff3(:, :)
         real(kind=wp), allocatable                        :: wp_eqb_diff2(:), wp_eqb_diff3(:)
+        real(kind=wp)                                     :: wp_nonsens_eqa(2, 4) !< the amplitude of four non-sensitive axises at
+                                                                                  !< signal frequency and doubled signal frequency
         
         type(pyplot)                                      :: plt
         
@@ -653,6 +915,7 @@ contains
             end do
         end do assign_index_span_5
         
+        !> first time-------------------------------------------------------------------------------
         !> normal matrix for four algorithms
         wp_normal_eqa_diff2 = 0.0_wp
         wp_normal_eqb_diff2 = 0.0_wp
@@ -881,14 +1144,6 @@ contains
             if (allocated(wp_eqb_diff3)) deallocate(wp_eqb_diff3, stat=err)
             if (err /= 0) print *, "wp_eqb_diff3: Deallocation request denied"
             
-            !>--------------------------------------------------------------------------------------
-            !> solve equations
-            !> time domain LSQR
-            ! call jd_i(i)%solve_phase_centre_vad_eq(i)
-            ! call jd_i(i)%solve_phase_centre_vad_eq_stitch(i)
-            !> frequency domain LSQR
-            ! call jd_i(i)%solve_phase_centre_vad_eq_freq(i)
-            
             !> deallocate
             if (allocated(jd_i(i)%gps1b_trac)) deallocate(jd_i(i)%gps1b_trac, stat=err)
             if (err /= 0) print *, "jd(i)%gps1b_trac: Deallocation request denied"
@@ -917,8 +1172,441 @@ contains
         self%inverse_vector(4, 4) = self%initial_vector(4)
         self%inverse_vector(3, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff2, wp_normal_eqb_diff2)
         self%inverse_vector(4, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff3, wp_normal_eqb_diff3)
-        print *, self%inverse_vector(1, :), self%inverse_vector(2, :)
-        print *, self%inverse_vector(3, :), self%inverse_vector(4, :)
+        self%inverse_vector_n = self%inverse_vector
+        !>------------------------------------------------------------------------------------------
+
+        !> second time -----------------------------------------------------------------------------
+        !> normal matrix for four algorithms
+        wp_normal_eqa_diff2 = 0.0_wp
+        wp_normal_eqb_diff2 = 0.0_wp
+        wp_normal_eqa_diff3 = 0.0_wp
+        wp_normal_eqb_diff3 = 0.0_wp
+        !> for jd-1: the motivation is along the yaw direction of the leading satellite (x, y)12
+        !> for jd-2: the motivation is along the pitch direction of the leading satellite (x, z)13
+        !> for jd-3: the motivation is along the yaw direction of the tracking satellite (x, y)45
+        !> for jd-4: the motivation is along the pitch direction of the tracking satellite (x, z)46
+        assign_jd_loop_n: do i = 1, 4, 1
+            length_span = index_span(i, 2) - index_span(i, 1) + 1
+            length_span_5 = index_span_5(i, 2) - index_span_5(i, 1) + 1
+            allocate(jd_i(i)%acc1b_lead(1: length_span_5), stat=err)
+            if (err /= 0) print *, "jd(i)%acc1b_lead: Allocation request denied"
+            allocate(jd_i(i)%acc1b_trac(1: length_span_5), stat=err)
+            if (err /= 0) print *, "jd(i)%acc1b_trac: Allocation request denied"
+            allocate(jd_i(i)%kbr1b_both(1: length_span_5), stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_both: Allocation request denied"
+            allocate(jd_i(i)%kbr1b_2degdiff(1: length_span_5 - 2), stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_2defdiff: Allocation request denied"
+            allocate(jd_i(i)%kbr1b_3degdiff(1: length_span_5 - 3), stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_3degediff: Allocation request denied"
+            allocate(jd_i(i)%sca1b_lead(1: length_span), stat=err)
+            if (err /= 0) print *, "jd(i)%sca1b_lead: Allocation request denied"
+            allocate(jd_i(i)%sca1b_trac(1: length_span), stat=err)
+            if (err /= 0) print *, "jd(i)%sca1b_trac: Allocation request denied"
+            allocate(jd_i(i)%gps1b_lead(1: length_span), stat=err)
+            if (err /= 0) print *, "jd(i)%gps1b_lead: Allocation request denied"
+            allocate(jd_i(i)%gps1b_trac(1: length_span), stat=err)
+            if (err /= 0) print *, "jd(i)%gps1b_trac: Allocation request denied"
+            
+            !> necesary assignment
+            jd_i(i)%kbr1b_both = self%kbr1b_both(index_span_5(i, 1): index_span_5(i, 2))
+            jd_i(i)%acc1b_lead = self%acc1b_lead(index_span_5(i, 1): index_span_5(i, 2))
+            jd_i(i)%acc1b_trac = self%acc1b_trac(index_span_5(i, 1): index_span_5(i, 2))
+            jd_i(i)%gps1b_lead = self%gps1b_lead(index_span(i, 1): index_span(i, 2))
+            jd_i(i)%gps1b_trac = self%gps1b_trac(index_span(i, 1): index_span(i, 2))
+            jd_i(i)%sca1b_lead = self%sca1b_lead(index_span(i, 1): index_span(i, 2))
+            jd_i(i)%sca1b_trac = self%sca1b_trac(index_span(i, 1): index_span(i, 2))
+            
+            !>--------------------------------------------------------------------------------------
+            !> create equations
+            call jd_i(i)%create_phase_centre_vad_eq(i)
+            
+            allocate(wp_eqa_diff2(size(jd_i(i)%kbr1b_2degdiff), 6), stat=err)
+            if (err /= 0) print *, "wp_eqa_diff2: Allocation request denied"
+            allocate(wp_eqa_diff3(size(jd_i(i)%kbr1b_3degdiff), 6), stat=err)
+            if (err /= 0) print *, "wp_eqa_diff3: Allocation request denied"
+            allocate(wp_eqb_diff2(size(jd_i(i)%kbr1b_2degdiff)), stat=err)
+            if (err /= 0) print *, "wp_eqb_diff2: Allocation request denied"
+            allocate(wp_eqb_diff3(size(jd_i(i)%kbr1b_3degdiff)), stat=err)
+            if (err /= 0) print *, "wp_eqb_diff3: Allocation request denied"
+            
+            !> high pass filter for the data vector
+            !> diff-2
+            wp_eqb_diff2 = jd_i(i)%kbr1b_2degdiff%eq_b
+            call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff2, 0.2_wp, &
+                           jd_i(i)%kbr1b_2degdiff%eq_b, nfilter)
+
+            !> diff-3
+            wp_eqb_diff3 = jd_i(i)%kbr1b_3degdiff%eq_b
+            call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff3, 0.2_wp, &
+                           jd_i(i)%kbr1b_3degdiff%eq_b, nfilter)
+
+            !> high pass filter for the model matrix separately
+            do j = 1, 6, 1
+                !> diff-2
+                wp_eqb_diff2 = jd_i(i)%kbr1b_2degdiff%eq_a(j)
+                call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff2, 0.2_wp, &
+                           wp_eqa_diff2(:, j), nfilter)
+                !> diff-3
+                wp_eqb_diff3 = jd_i(i)%kbr1b_3degdiff%eq_a(j)
+                call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff3, 0.2_wp, &
+                           wp_eqa_diff3(:, j), nfilter)
+            end do
+
+            !> identify the amplitude of the Fourier component at the maneuver frequency and doubled maneuver frequency
+            call jd_i(i)%amp_identification(jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b, &
+                                            jd_i(i)%wp_amp_freq(:, 3))
+            call jd_i(i)%amp_identification(jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b, &
+                                            jd_i(i)%wp_amp_freq(:, 4))
+            
+            !> solver for the two algorithms separately in the frequency domain
+            select case (i)
+                case (1)
+                    !> diff2
+                    !> freq
+                    !> sensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 1), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> nonsensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
+                                                    wp_nonsens_eqa(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 4), &
+                                                    wp_nonsens_eqa(:, 2))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                                                    wp_nonsens_eqa(:, 3))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                                                    wp_nonsens_eqa(:, 4))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(1, 2) = (jd_i(i)%wp_amp_freq(1, 3) &
+                                                - self%initial_vector(1) * jd_i(i)%wp_amp_freq(1, 1) &
+                                                - self%inverse_vector_n(1, 3) * wp_nonsens_eqa(1, 1) &
+                                                - self%inverse_vector_n(1, 4) * wp_nonsens_eqa(1, 2) &
+                                                - self%inverse_vector_n(1, 5) * wp_nonsens_eqa(1, 3) &
+                                                - self%inverse_vector_n(1, 6) * wp_nonsens_eqa(1, 4))&
+                                                / jd_i(i)%wp_amp_freq(1, 2)
+
+                    !> time domain
+                    self%inverse_vector(3, 2) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                                                            jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
+                                                            - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 3, 4, 5, 6]), &
+                                                                     self%inverse_vector_n(3, [1, 3, 4, 5, 6]))) &
+                                                / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                                                              wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2))
+
+                    !> diff3
+                    !> sensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 1), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> nonsensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
+                                                    wp_nonsens_eqa(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 4), &
+                                                    wp_nonsens_eqa(:, 2))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
+                                                    wp_nonsens_eqa(:, 3))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
+                                                    wp_nonsens_eqa(:, 4))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(2, 2) = (jd_i(i)%wp_amp_freq(1, 4) &
+                                                - self%initial_vector(1) * jd_i(i)%wp_amp_freq(1, 1) &
+                                                - self%inverse_vector_n(2, 3) * wp_nonsens_eqa(1, 1) &
+                                                - self%inverse_vector_n(2, 4) * wp_nonsens_eqa(1, 2) &
+                                                - self%inverse_vector_n(2, 5) * wp_nonsens_eqa(1, 3) &
+                                                - self%inverse_vector_n(2, 6) * wp_nonsens_eqa(1, 4))&
+                                                / jd_i(i)%wp_amp_freq(1, 2)
+                    !> time domain
+                    self%inverse_vector(4, 2) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
+                                                            jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
+                                                            - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 3, 4, 5, 6]), &
+                                                                     self%inverse_vector_n(4, [1, 3, 4, 5, 6]))) &
+                                                / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
+                                                              wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2))
+
+                case (2)
+                    !> diff2
+                    !> frequency domain
+                    !> sensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 1), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> nonsensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                                                    wp_nonsens_eqa(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 4), &
+                                                    wp_nonsens_eqa(:, 2))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                                                    wp_nonsens_eqa(:, 3))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                                                    wp_nonsens_eqa(:, 4))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(1, 3) = (jd_i(i)%wp_amp_freq(1, 3) &
+                                                - self%initial_vector(1) * jd_i(i)%wp_amp_freq(1, 1) &
+                                                - self%inverse_vector_n(1, 2) * wp_nonsens_eqa(1, 1) &
+                                                - self%inverse_vector_n(1, 4) * wp_nonsens_eqa(1, 2) &
+                                                - self%inverse_vector_n(1, 5) * wp_nonsens_eqa(1, 3) &
+                                                - self%inverse_vector_n(1, 6) * wp_nonsens_eqa(1, 4))&
+                                                / jd_i(i)%wp_amp_freq(1, 2)
+                    !> time domain
+                    self%inverse_vector(3, 3) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
+                                                            jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
+                                                            - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 2, 4, 5, 6]), &
+                                                                     self%inverse_vector_n(3, [1, 2, 4, 5, 6]))) &
+                                                / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
+                                                              wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3))
+                    
+                    !> diff3
+                    !> frequency domain
+                    !> sensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 1), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> nonsensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                                                    wp_nonsens_eqa(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 4), &
+                                                    wp_nonsens_eqa(:, 2))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                                                    wp_nonsens_eqa(:, 3))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                                                    wp_nonsens_eqa(:, 4))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(2, 3) = (jd_i(i)%wp_amp_freq(1, 4) &
+                                                - self%initial_vector(1) * jd_i(i)%wp_amp_freq(1, 1) &
+                                                - self%inverse_vector_n(2, 2) * wp_nonsens_eqa(1, 1) &
+                                                - self%inverse_vector_n(2, 4) * wp_nonsens_eqa(1, 2) &
+                                                - self%inverse_vector_n(2, 5) * wp_nonsens_eqa(1, 3) &
+                                                - self%inverse_vector_n(2, 6) * wp_nonsens_eqa(1, 4))&
+                                                / jd_i(i)%wp_amp_freq(1, 2)
+                    !> time domain
+                    self%inverse_vector(4, 3) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
+                                                            jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
+                                                            - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 2, 4, 5, 6]), &
+                                                                     self%inverse_vector_n(4, [1, 2, 4, 5, 6]))) &
+                                                / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
+                                                              wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3))
+
+                case (3)
+                    !> diff2
+                    !> frequency domain
+                    !> sensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 4), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> nonsensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 1), &
+                                                    wp_nonsens_eqa(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                                                    wp_nonsens_eqa(:, 2))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
+                                                    wp_nonsens_eqa(:, 3))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                                                    wp_nonsens_eqa(:, 4))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(1, 5) = (jd_i(i)%wp_amp_freq(1, 3) &
+                                                - self%initial_vector(4) * jd_i(i)%wp_amp_freq(1, 1) &
+                                                - self%inverse_vector_n(1, 1) * wp_nonsens_eqa(1, 1) &
+                                                - self%inverse_vector_n(1, 2) * wp_nonsens_eqa(1, 2) &
+                                                - self%inverse_vector_n(1, 3) * wp_nonsens_eqa(1, 3) &
+                                                - self%inverse_vector_n(1, 6) * wp_nonsens_eqa(1, 4))&
+                                                / jd_i(i)%wp_amp_freq(1, 2)
+                    !> time domain
+                    self%inverse_vector(3, 5) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                                                            jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
+                                                            - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 2, 3, 4, 6]), &
+                                                                     self%inverse_vector_n(3, [1, 2, 3, 4, 6]))) &
+                                                / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                                                              wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5))
+                    
+                    !> diff3
+                    !> frequency domain
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 4), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> nonsensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 1), &
+                                                    wp_nonsens_eqa(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
+                                                    wp_nonsens_eqa(:, 2))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
+                                                    wp_nonsens_eqa(:, 3))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
+                                                    wp_nonsens_eqa(:, 4))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(2, 5) = (jd_i(i)%wp_amp_freq(1, 4) &
+                                                - self%initial_vector(4) * jd_i(i)%wp_amp_freq(1, 1) &
+                                                - self%inverse_vector_n(1, 1) * wp_nonsens_eqa(1, 1) &
+                                                - self%inverse_vector_n(1, 2) * wp_nonsens_eqa(1, 2) &
+                                                - self%inverse_vector_n(1, 3) * wp_nonsens_eqa(1, 3) &
+                                                - self%inverse_vector_n(1, 6) * wp_nonsens_eqa(1, 4))&
+                                                / jd_i(i)%wp_amp_freq(1, 2)
+                    !> time domain
+                    self%inverse_vector(4, 5) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
+                                                            jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
+                                                            - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 2, 3, 4, 6]), &
+                                                                     self%inverse_vector_n(4, [1, 2, 3, 4, 6]))) &
+                                                / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
+                                                              wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5))
+
+                case (4)
+                    !> diff2
+                    !> frequency domain
+                    !> sensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 4), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> nonsensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 1), &
+                                                    wp_nonsens_eqa(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                                                    wp_nonsens_eqa(:, 2))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
+                                                    wp_nonsens_eqa(:, 3))
+                    call jd_i(i)%amp_identification(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                                                    wp_nonsens_eqa(:, 4))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(1, 6) = (jd_i(i)%wp_amp_freq(1, 3) &
+                                                - self%initial_vector(4) * jd_i(i)%wp_amp_freq(1, 1) &
+                                                - self%inverse_vector_n(1, 1) * wp_nonsens_eqa(1, 1) &
+                                                - self%inverse_vector_n(1, 2) * wp_nonsens_eqa(1, 2) &
+                                                - self%inverse_vector_n(1, 3) * wp_nonsens_eqa(1, 3) &
+                                                - self%inverse_vector_n(1, 5) * wp_nonsens_eqa(1, 4))&
+                                                / jd_i(i)%wp_amp_freq(1, 2)
+                    !> time domain
+                    self%inverse_vector(3, 6) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                                                            jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
+                                                            - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 2, 3, 4, 5]), &
+                                                                     self%inverse_vector_n(3, [1, 2, 3, 4, 5]))) &
+                                                / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                                                              wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6))
+
+                    !> diff3
+                    !> frequency domain
+                    !> sensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 4), &
+                                                    jd_i(i)%wp_amp_freq(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
+                                                    jd_i(i)%wp_amp_freq(:, 2))
+                    !> nonsensitive axis
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 1), &
+                                                    wp_nonsens_eqa(:, 1))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
+                                                    wp_nonsens_eqa(:, 2))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
+                                                    wp_nonsens_eqa(:, 3))
+                    call jd_i(i)%amp_identification(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
+                                                    wp_nonsens_eqa(:, 4))
+                    !> mirror maneuver
+                    !> ref: estimation theory for KBR on-board calibration
+                    if (i_mirror == 0) then
+                        jd_i(i)%wp_amp_freq(2, 2) = -jd_i(i)%wp_amp_freq(2, 2)
+                    else
+                        jd_i(i)%wp_amp_freq(1, 2) = -jd_i(i)%wp_amp_freq(1, 2)
+                    end if
+                    !> solve the linear equation system
+                    self%inverse_vector(2, 6) = (jd_i(i)%wp_amp_freq(1, 4) &
+                                                - self%initial_vector(4) * jd_i(i)%wp_amp_freq(1, 1) &
+                                                - self%inverse_vector_n(1, 1) * wp_nonsens_eqa(1, 1) &
+                                                - self%inverse_vector_n(1, 2) * wp_nonsens_eqa(1, 2) &
+                                                - self%inverse_vector_n(1, 3) * wp_nonsens_eqa(1, 3) &
+                                                - self%inverse_vector_n(1, 5) * wp_nonsens_eqa(1, 4))&
+                                                / jd_i(i)%wp_amp_freq(1, 2)
+                    !> time domain
+                    self%inverse_vector(4, 6) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
+                                                            jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
+                                                            - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 2, 3, 4, 5]), &
+                                                                     self%inverse_vector_n(4, [1, 2, 3, 4, 5]))) &
+                                                / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
+                                                              wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6))
+
+                case default
+            end select
+
+            if (allocated(wp_eqa_diff2)) deallocate(wp_eqa_diff2, stat=err)
+            if (err /= 0) print *, "wp_eqa_diff2: Deallocation request denied"
+            if (allocated(wp_eqa_diff3)) deallocate(wp_eqa_diff3, stat=err)
+            if (err /= 0) print *, "wp_eqa_diff3: Deallocation request denied"
+            if (allocated(wp_eqb_diff2)) deallocate(wp_eqb_diff2, stat=err)
+            if (err /= 0) print *, "wp_eqb_diff2: Deallocation request denied"
+            if (allocated(wp_eqb_diff3)) deallocate(wp_eqb_diff3, stat=err)
+            if (err /= 0) print *, "wp_eqb_diff3: Deallocation request denied"
+            
+            !> deallocate
+            if (allocated(jd_i(i)%gps1b_trac)) deallocate(jd_i(i)%gps1b_trac, stat=err)
+            if (err /= 0) print *, "jd(i)%gps1b_trac: Deallocation request denied"
+            if (allocated(jd_i(i)%gps1b_lead)) deallocate(jd_i(i)%gps1b_lead, stat=err)
+            if (err /= 0) print *, "jd(i)%gps1b_lead: Deallocation request denied"
+            if (allocated(jd_i(i)%sca1b_trac)) deallocate(jd_i(i)%sca1b_trac, stat=err)
+            if (err /= 0) print *, "jd(i)%sca1b_trac: Deallocation request denied"
+            if (allocated(jd_i(i)%sca1b_lead)) deallocate(jd_i(i)%sca1b_lead, stat=err)
+            if (err /= 0) print *, "jd(i)%sca1b_lead: Deallocation request denied"
+            if (allocated(jd_i(i)%kbr1b_both)) deallocate(jd_i(i)%kbr1b_both, stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_both: Deallocation request denied"
+            if (allocated(jd_i(i)%acc1b_lead)) deallocate(jd_i(i)%acc1b_lead, stat=err)
+            if (err /= 0) print *, "jd(i)%acc1b_lead: Deallocation request denied"
+            if (allocated(jd_i(i)%acc1b_trac)) deallocate(jd_i(i)%acc1b_trac, stat=err)
+            if (err /= 0) print *, "jd(i)%acc1b_trac: Deallocation request denied"
+            if (allocated(jd_i(i)%kbr1b_2degdiff)) deallocate(jd_i(i)%kbr1b_2degdiff, stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_2degdiff: Deallocation request denied"
+            if (allocated(jd_i(i)%kbr1b_3degdiff)) deallocate(jd_i(i)%kbr1b_3degdiff, stat=err)
+            if (err /= 0) print *, "jd(i)%kbr1b_3degdiff: Deallocation request denied"
+        end do assign_jd_loop_n
 
 
         !> expectation
