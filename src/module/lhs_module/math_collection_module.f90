@@ -79,7 +79,7 @@ contains
         real(kind=wp)                                                   :: wp_temp1, wp_temp2, wp_temp3
     
         n_loop: do n = 0, ip_length, 1
-            if (n /= ip_length) then
+            if (n /= ip_overlap) then
                 wp_temp1 = 0.0_wp;
                 m_loop: do m = 0, ip_length, 1
                     if (m /= n .and. m /= ip_overlap) then
@@ -113,11 +113,9 @@ contains
                         wp_temp3 = wp_temp3 + 1.0_wp / real(m, wp) / real(k, wp) 
                     end do
                 end do
-    
-                wp_coeffs(n) = 2.0_wp + (wp_temp1 + wp_temp2 - wp_temp3)
+                wp_coeffs(n) = 2.0_wp * (wp_temp1 + wp_temp2 - wp_temp3)
             end if
         end do n_loop
-    
     end function second_order_diff
 
     function included_angle(wp_vec1, wp_vec2) result(wp_included_angle)

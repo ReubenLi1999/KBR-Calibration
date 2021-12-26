@@ -234,8 +234,8 @@ module phase_centre_vad
         !> write the solved data to file
         procedure, NON_OVERRIDABLE, PUBLIC                   :: simu_ant_phase_corr              => simu_ant_phase_corr
         !> simulate the manuever data with the given a prior antenna offset
-        procedure, NON_OVERRIDABLE, PUBLIC                   :: divide_jd                        => divide_jd
-        !> subroutine to divide different manuevers
+        procedure, NON_OVERRIDABLE, PUBLIC                   :: solver_gnss                      => solver_gnss
+        !> subroutine to divide different manuevers and then solve the estimation problem based on the gnss data
         procedure, NON_OVERRIDABLE, public                   :: amp_identification               => amp_identification
         !> subroutine to identify the period of the manuever from the SCA data
         procedure, NON_OVERRIDABLE, public                   :: output_rpt                       => output_rpt
@@ -298,8 +298,12 @@ contains
 
     end subroutine assert_maneuver
 
-    subroutine solver_dynamics(self)
-        class(satellite)                , intent(inout)      :: self
+    subroutine solver_dynamics(self, jd_i, i_index_span, i_mirror)
+        class(satellite)     , intent(inout)              :: self
+        type(satellite)      , INTENT(INOUT)              :: jd_i(:)
+        integer(kind=ip)     , INTENT(IN   )              :: i_index_span(:, :)
+        integer(kind=ip)     , intent(in   )              :: i_mirror !< flag indicating mirror maneuver
+                                                                      !< if [i_mirror=1] the equation of frequency domain will change its sign
 
         !> local args
         integer(kind=ip)                                  :: i, err, length_span, j, fplerror, length_span_5
@@ -314,7 +318,6 @@ contains
         real(kind=wp), allocatable                        :: wp_eqb_diff2(:), wp_eqb_diff3(:)
         real(kind=wp)                                     :: wp_nonsens_eqa(2, 4) !< the amplitude of four non-sensitive axises at
                                                                                   !< signal frequency and doubled signal frequency
-        
         type(pyplot)                                      :: plt
 
         !> normal matrix for four algorithms
@@ -393,18 +396,6 @@ contains
                            wp_eqa_diff3(:, j), nfilter)
             end do
 
-            !> normal equation for diff-2 and diff-3 in the time domain
-            wp_normal_eqa_diff2 = wp_normal_eqa_diff2 + matmul(TRANSPOSE(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6])), &
-                                                               wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6]))
-            wp_normal_eqb_diff2 = wp_normal_eqb_diff2 + matmul(TRANSPOSE(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6])), &
-                                                               jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
-                                                      - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 4]), [self%initial_vector(1), self%initial_vector(4)]))
-            wp_normal_eqa_diff3 = wp_normal_eqa_diff3 + matmul(TRANSPOSE(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6])), &
-                                                               wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6]))
-            wp_normal_eqb_diff3 = wp_normal_eqb_diff3 + matmul(TRANSPOSE(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6])), &
-                                                               jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b &
-                                                      - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 4]), [self%initial_vector(1), self%initial_vector(4)]))
-            
             !> identify the amplitude of the Fourier component at the maneuver frequency and doubled maneuver frequency
             call jd_i(i)%amp_identification(jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b, &
                                             jd_i(i)%wp_amp_freq(:, 3))
@@ -869,7 +860,7 @@ contains
     !     
     ! end subroutine solve_phase_centre_vad_eq_freq
 
-    subroutine divide_jd(self, jd_i, i_index_span, i_mirror)
+    subroutine solver_gnss(self, jd_i, i_index_span, i_mirror)
         class(satellite)     , intent(inout)              :: self
         type(satellite)      , INTENT(INOUT)              :: jd_i(:)
         integer(kind=ip)     , INTENT(IN   )              :: i_index_span(:, :)
@@ -1618,7 +1609,7 @@ contains
         
         call logger%info("phase_centre_vad", "Solve the linear inverse problem successfully")
 
-    end subroutine
+    end subroutine solver_gnss
 
     subroutine simu_ant_phase_corr(self)
         class(satellite)    , INTENT(INOUT)              :: self
