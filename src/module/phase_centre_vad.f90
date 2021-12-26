@@ -350,7 +350,7 @@ contains
             if (err /= 0) print *, "jd(i)%gps1b_lead: Allocation request denied"
             allocate(jd_i(i)%gps1b_trac(1: length_span), stat=err)
             if (err /= 0) print *, "jd(i)%gps1b_trac: Allocation request denied"
-            
+
             !> necesary assignment
             jd_i(i)%kbr1b_both = self%kbr1b_both(index_span_5(i, 1): index_span_5(i, 2))
             jd_i(i)%acc1b_lead = self%acc1b_lead(index_span_5(i, 1): index_span_5(i, 2))
@@ -359,11 +359,11 @@ contains
             jd_i(i)%gps1b_trac = self%gps1b_trac(index_span(i, 1): index_span(i, 2))
             jd_i(i)%sca1b_lead = self%sca1b_lead(index_span(i, 1): index_span(i, 2))
             jd_i(i)%sca1b_trac = self%sca1b_trac(index_span(i, 1): index_span(i, 2))
-            
+
             !>--------------------------------------------------------------------------------------
             !> create equations
             call jd_i(i)%create_phase_centre_vad_eq(i)
-            
+
             allocate(wp_eqa_diff2(size(jd_i(i)%kbr1b_2degdiff), 6), stat=err)
             if (err /= 0) print *, "wp_eqa_diff2: Allocation request denied"
             allocate(wp_eqa_diff3(size(jd_i(i)%kbr1b_3degdiff), 6), stat=err)
@@ -372,17 +372,16 @@ contains
             if (err /= 0) print *, "wp_eqb_diff2: Allocation request denied"
             allocate(wp_eqb_diff3(size(jd_i(i)%kbr1b_3degdiff)), stat=err)
             if (err /= 0) print *, "wp_eqb_diff3: Allocation request denied"
-            
+
             !> high pass filter for the data vector
             !> diff-2
             wp_eqb_diff2 = jd_i(i)%kbr1b_2degdiff%eq_b
             call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff2, 0.2_wp, &
-                           jd_i(i)%kbr1b_2degdiff%eq_b, nfilter)
-
+                            jd_i(i)%kbr1b_2degdiff%eq_b, nfilter)
             !> diff-3
             wp_eqb_diff3 = jd_i(i)%kbr1b_3degdiff%eq_b
             call fir_filter(trim(config_path)//'coeff_band_pass_0.001_0.009_ls.fcf', wp_eqb_diff3, 0.2_wp, &
-                           jd_i(i)%kbr1b_3degdiff%eq_b, nfilter)
+                            jd_i(i)%kbr1b_3degdiff%eq_b, nfilter)
 
             !> high pass filter for the model matrix separately
             do j = 1, 6, 1
