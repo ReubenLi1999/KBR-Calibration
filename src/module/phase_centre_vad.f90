@@ -80,6 +80,14 @@ module phase_centre_vad
         !> the position vector for the leading satellite in the inertial frame
         real(kind=wp)                                        :: pos_i_trac(3)
         !> the position vector for the tracking satellite in the inertial frame
+        real(kind=wp)                                        :: pos_e_lead(3)
+        !> the position vector for the leading satellite in the earth-fixed frame
+        real(kind=wp)                                        :: pos_e_trac(3)
+        !> the position vector for the tracking satellite in the earth-fixed frame
+        real(kind=wp)                                        :: wp_acc_grav_lead_e(3)
+        !> gravitational acceleration for the leading satellite in the earth-fixed frame
+        real(kind=wp)                                        :: wp_acc_grav_trac_e(3)
+        !> gravitational acceleration for the tracking satellite in the earth-fixed frame
         real(kind=wp)                                        :: range_simu
         !> the simulated range corresponding to the biased range, computed from the forward subroutine
         real(kind=wp)                                        :: range_meas
@@ -246,6 +254,8 @@ module phase_centre_vad
         !> in the case that the POD data contains periodic signal with the same period as the maneuver signal, the aforementioned solvers
         !> will collapse.
         procedure, NON_OVERRIDABLE, PUBLIC                   :: assert_maneuver                  => assert_maneuver
+        !> make sure the maneuver epoches are at the span
+        procedure, NON_OVERRIDABLE, PUBLIC                   :: create_eq_dynamics               => create_eq_dynamics
     end type satellite
     
     type, extends(ddeabm_with_event_class) :: spacecraft
@@ -278,6 +288,271 @@ module phase_centre_vad
     type(spacecraft)                                         :: lead, trac
 
 contains
+
+    subroutine create_eq_dynamics(self, i_index_motiv)
+        class(satellite)    , INTENT(INOUT)                  :: self
+        integer(kind=ip)    , INTENT(IN   ), OPTIONAL        :: i_index_motiv
+        type(hashtable)                                      :: q_scac, q_scad, q_gnia, q_gnib
+        integer(kind=ip)                                     :: i, ios, j, istat
+        integer(kind=ip)                                     :: tkbr, tscac, tscad, tgnia, tgnib
+        real(kind=wp), ALLOCATABLE                           :: q_c(:), q_d(:), i_c(:), i_d(:)
+        real(kind=wp)                                        :: range_res_ave
+        real(kind=wp)                                        :: temp
+        real(kind=wp)                                        :: intersatellite_range(size(self%kbr1b_both))
+        character(len=14)                                    :: datenow
+        character(len=1)                                     :: c_index_motiv
+        type(pyplot)                                         :: plt
+        
+        
+        datenow = yyyymmddhhmmss()
+
+        !> delete
+        !open(unit=588, file='..//output//inertial_trajectory_2019-01-01_C_04.txt', iostat=ios, status="old", action="read")
+        !if ( ios /= 0 ) stop "Error opening file name"
+        !open(unit=899, file='..//output//inertial_trajectory_2019-01-01_D_04.txt', iostat=ios, status="old", action="read")
+        !if ( ios /= 0 ) stop "Error opening file name"
+        !read(588, *); read(899, *)
+        !do i = 1, size(self%kbr1b_both), 1
+        !    read(588, *) temp, self%kbr1b_both(i)%pos_i_lead
+        !    read(899, *) temp, self%kbr1b_both(i)%pos_i_trac
+        !end do
+        !
+        !close(unit=588, iostat=ios)
+        !if ( ios /= 0 ) stop "Error closing file unit 588"
+        !close(unit=899, iostat=ios)
+        !if ( ios /= 0 ) stop "Error closing file unit 899"
+        !> delete
+        
+        !open(unit=424, file='..//temp//trajectory'//datenow//'.txt', iostat=ios, status="unknown", action="write")
+        !if ( ios /= 0 ) stop "Error opening file name"
+        !> calculate the simulated inter-satellite range
+        ! simu_range: do i = 1, size(self%kbr1b_both), 1
+        !     self%kbr1b_both(i)%range_simu = norm2(self%kbr1b_both(i)%pos_i_lead - self%kbr1b_both(i)%pos_i_trac)
+        !     !write(424, '(6f30.15)') self%kbr1b_both(i)%pos_i_lead, self%kbr1b_both(i)%pos_i_trac
+        ! end do simu_range
+
+        !>------------------------------------------------------------------------------------------
+        !> obtain position vector in the inertial frame
+        !> using hash table
+        call q_gnva%init(nitems=size(self%gps1b_lead))
+        call q_gnvb%init(nitems=size(self%gps1b_trac))
+
+        !> check if the nrows of sca_lead and sca_track are the same
+        if (size(self%gps1b_lead) /= size(self%gps1b_trac)) then
+            call logger%error('phase_centre_vad', 'the number of lines of two SCA files are different')
+            call xml_o%xml2file(1, 'the number of lines of two SCA files are different')
+            stop
+        end if
+        
+        put_gnv_value: do i = 1, size(self%gps1b_lead), 1
+            tgnva = int(self%gps1b_lead(i)%gpst_gps1b)
+            tgnvb = int(self%gps1b_trac(i)%gpst_gps1b)
+            call q_gnva%put(key=tgnva, rvals=self%gps1b_lead(i)%pos_e)
+            call q_gnvb%put(key=tgnvb, rvals=self%gps1b_trac(i)%pos_e)
+        end do put_gnv_value
+
+        create_acc: do i = 1, size(self%kbr1b_both), 1
+            !> quaternion to rotation matrix section
+            tkbr = int(self%kbr1b_both(i)%gpst_kbr1b)
+            if (q_gnva%has_key(tkbr)) then
+                !> get position vector in the earth-fixed frame from the hash table
+                call q_gnva%get(key=tkbr, rvals=i_c)
+                !> assign the position vector to the kbr1b_both
+                self%kbr1b_both(i)%pos_e_lead = i_c
+                !> get the gravitational acceleration of the earth-fixed frame 
+                call accxyz(self%kbr1b_both(i)%pos_e_lead, self%kbr1b_both(i)%wp_acc_grav_lead_e, &
+                             60_ip, self%cs_coeffs%c_coeffs, self%cs_coeffs%s_coeffs)
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
+                call xml_o%xml2file(1, 'time tags of KBR data and KOE data not compatible')
+                stop
+            end if
+            if (q_gnvb%has_key(tkbr)) then
+                call q_gnvb%get(key=tkbr, rvals=i_d)
+                self%kbr1b_both(i)%pos_e_trac = i_d
+                !> get the gravitational acceleration of the earth-fixed frame 
+                call accxyz(self%kbr1b_both(i)%pos_e_trac, self%kbr1b_both(i)%wp_acc_grav_trac_e, &
+                             60_ip, self%cs_coeffs%c_coeffs, self%cs_coeffs%s_coeffs)
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
+                call xml_o%xml2file(1, "time tags of KBR data and KOE data not compatible")
+                stop
+            end if
+        end do create_acc
+
+        !>------------------------------------------------------------------------------------------
+        !> obtain position vector in the inertial frame
+        !> using hash table
+        call q_gnia%init(nitems=size(self%gps1b_lead))
+        call q_gnib%init(nitems=size(self%gps1b_trac))
+
+        !> check if the nrows of sca_lead and sca_track are the same
+        if (size(self%gps1b_lead) /= size(self%gps1b_trac)) then
+            call logger%error('phase_centre_vad', 'the number of lines of two SCA files are different')
+            call xml_o%xml2file(1, 'the number of lines of two SCA files are different')
+            stop
+        end if
+        
+        put_gps_value: do i = 1, size(self%gps1b_lead), 1
+            tgnia = int(self%gps1b_lead(i)%gpst_gps1b)
+            tgnib = int(self%gps1b_trac(i)%gpst_gps1b)
+            call q_gnia%put(key=tgnia, rvals=self%gps1b_lead(i)%pos_i)
+            call q_gnib%put(key=tgnib, rvals=self%gps1b_trac(i)%pos_i)
+        end do put_gps_value
+
+        create_eqb: do i = 1, size(self%kbr1b_both), 1
+            !> quaternion to rotation matrix section
+            tkbr = int(self%kbr1b_both(i)%gpst_kbr1b)
+            if (q_gnia%has_key(tkbr)) then
+                call q_gnia%get(key=tkbr, rvals=i_c)
+                self%kbr1b_both(i)%pos_i_lead = i_c
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
+                call xml_o%xml2file(1, 'time tags of KBR data and KOE data not compatible')
+                stop
+            end if
+            if (q_gnib%has_key(tkbr)) then
+                call q_gnib%get(key=tkbr, rvals=i_d)
+                self%kbr1b_both(i)%pos_i_trac = i_d
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
+                call xml_o%xml2file(1, "time tags of KBR data and KOE data not compatible")
+                stop
+            end if
+            self%kbr1b_both(i)%range_pod = norm2(self%kbr1b_both(i)%pos_i_lead - self%kbr1b_both(i)%pos_i_trac)
+        end do create_eqb
+
+        !close(424)
+        !stop
+
+        !> calculate the residual between the biased range from KBR and the simulated inter-satellite range
+        ! self%kbr1b_both%range_resi = -self%kbr1b_both%range + self%kbr1b_both%tof_range + self%kbr1b_both%range_simu
+        self%kbr1b_both%range_resi = self%kbr1b_both%range + self%kbr1b_both%tof_range - self%kbr1b_both%range_pod
+        ! call plt%initialize()
+        ! call plt%add_plot(self%kbr1b_both%gpst_kbr1b, self%kbr1b_both%range_simu, label='$\sin(x)$', linestyle='b-o',markersize=5,linewidth=2, istat=istat)
+        ! call plt%savefig('sinx.png', pyfile='sinx.py', ismat=.true., istat=istat)
+        ! 
+        ! call plt%initialize()
+        ! call plt%add_plot(self%kbr1b_both%gpst_kbr1b, self%kbr1b_both%range, label='$\sin(x)$', linestyle='b-o',markersize=5,linewidth=2, ! istat=istat)
+        ! call plt%savefig('sinx.png', pyfile='sinx.py', ismat=.true., istat=istat)
+        ! 
+        ! call plt%initialize()
+        ! call plt%add_plot(self%kbr1b_both%gpst_kbr1b, self%kbr1b_both%range_resi, label='$\sin(x)$', linestyle='b-o',markersize=5,linewidth=2, istat=istat)
+        ! call plt%savefig('sinx.png', pyfile='sinx.py', ismat=.true., istat=istat)
+        ! print *, self%kbr1b_both%range_resi
+        ! stop
+
+        !> calculate the line-of-sight vector
+        self%kbr1b_both%los_l2t(1) =  self%kbr1b_both%pos_i_lead(1) - self%kbr1b_both%pos_i_trac(1)
+        self%kbr1b_both%los_l2t(2) =  self%kbr1b_both%pos_i_lead(2) - self%kbr1b_both%pos_i_trac(2)
+        self%kbr1b_both%los_l2t(3) =  self%kbr1b_both%pos_i_lead(3) - self%kbr1b_both%pos_i_trac(3)
+        self%kbr1b_both%los_t2l(1) = -self%kbr1b_both%los_l2t(1)
+        self%kbr1b_both%los_t2l(2) = -self%kbr1b_both%los_l2t(2)
+        self%kbr1b_both%los_t2l(3) = -self%kbr1b_both%los_l2t(3)
+
+        !> calculate the inter-satellite range
+        cal_inter_range: do i = 1, size(self%kbr1b_both), 1
+            intersatellite_range(i) = norm2(self%kbr1b_both(i)%los_l2t)
+            do j = 1, 3, 1
+                self%kbr1b_both(i)%los_l2t(j) = self%kbr1b_both(i)%los_l2t(j) / intersatellite_range(i)
+                self%kbr1b_both(i)%los_t2l(j) = self%kbr1b_both(i)%los_t2l(j) / intersatellite_range(i)
+            end do
+        end do cal_inter_range
+
+        !> quaternion to rotation matrix
+        !> using hash table
+        call q_scac%init(nitems=size(self%sca1b_lead))
+        call q_scad%init(nitems=size(self%sca1b_trac))
+
+        !> check if the nrows of sca_lead and sca_track are the same
+        if (size(self%sca1b_lead) /= size(self%sca1b_trac)) then
+            call logger%error('phase_centre_vad', 'the number of lines of two SCA files are different')
+            call xml_o%xml2file(1, 'the number of lines of two SCA files are different')
+            stop
+        end if
+        
+        put_sca_value: do i = 1, size(self%sca1b_lead), 1
+            tscac = int(self%sca1b_lead(i)%gpst_sca1b)
+            tscad = int(self%sca1b_trac(i)%gpst_sca1b)
+            call q_scac%put(key=tscac, rvals=self%sca1b_lead(i)%quaternion)
+            call q_scad%put(key=tscad, rvals=self%sca1b_trac(i)%quaternion)
+        end do put_sca_value
+
+        !> -----------------------------------------------------------------------------------------
+        ! open(unit=424, file='..//temp//eq_a_'//datenow//'.txt', iostat=ios, status="unknown", position="append")
+        ! if ( ios /= 0 ) stop "Error opening file name"
+        !> -----------------------------------------------------------------------------------------
+        range_res_ave = 0.0_wp
+        create_eq: do i = 1, size(self%kbr1b_both), 1
+            !> range residual average section
+            range_res_ave = range_res_ave + self%kbr1b_both(i)%range_resi
+
+            !> quaternion to rotation matrix section
+            tkbr = int(self%kbr1b_both(i)%gpst_kbr1b)
+            if (q_scac%has_key(tkbr)) then
+                call q_scac%get(key=tkbr, rvals=q_c)
+                self%kbr1b_both(i)%quaternion_c = q_c
+                self%kbr1b_both(i)%rotm_c_i2s = q2m(self%kbr1b_both(i)%quaternion_c)
+                self%kbr1b_both(i)%rotm_c_s2i = transpose(self%kbr1b_both(i)%rotm_c_i2s)
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and SCA data not compatible')
+                call xml_o%xml2file(1, 'time tags of KBR data and SCA data not compatible')
+                stop
+            end if
+            if (q_scad%has_key(tkbr)) then
+                call q_scad%get(key=tkbr, rvals=q_d)
+                self%kbr1b_both(i)%quaternion_d = q_d
+                self%kbr1b_both(i)%rotm_d_i2s = q2m(self%kbr1b_both(i)%quaternion_d)
+                self%kbr1b_both(i)%rotm_d_s2i = transpose(self%kbr1b_both(i)%rotm_d_i2s)
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and SCA data not compatible')
+                call xml_o%xml2file(1, "time tags of KBR data and SCA data not compatible")
+                stop
+            end if
+
+            !> assign matrix A in Ax=b
+            self%kbr1b_both(i)%eq_a(1: 3) = matmul(self%kbr1b_both(i)%los_l2t, self%kbr1b_both(i)%rotm_c_s2i)
+            self%kbr1b_both(i)%eq_a(4: 6) = matmul(self%kbr1b_both(i)%los_t2l, self%kbr1b_both(i)%rotm_d_s2i)
+            ! print *, self%kbr1b_both(i)%eq_a(1: 3)
+
+            ! write(424, '(10f40.20)') self%kbr1b_both(i)%eq_a
+        end do create_eq
+        !> -----------------------------------------------------------------------------------------
+        ! close(unit=424, iostat=ios)
+        ! if ( ios /= 0 ) stop "Error closing file unit 424"
+        !> -----------------------------------------------------------------------------------------
+
+        !> simulate the antenna phase correction
+        ! call self%simu_ant_phase_corr()
+
+        !> assign array b in Ax=b
+        self%kbr1b_both%eq_b = self%kbr1b_both%range_resi
+
+
+        !>------------------------------------------------------------------------------------------
+        !> output eq_b
+        ! open(unit=424, file='..//temp//eq_b_'//datenow//'.txt', iostat=ios, status="unknown", position="append")
+        ! if ( ios /= 0 ) stop "Error opening file name"
+        ! write2file_eq_b: do i = 1, size(self%kbr1b_both), 1
+        !     write(424, *) self%kbr1b_both(i)%eq_b
+        ! end do write2file_eq_b
+        ! close(424)
+
+        !> create equation for 2-degree diff and 3-degree diff
+        create_2degdiff_loop: do i = 1, size(self%kbr1b_2degdiff), 1
+            self%kbr1b_2degdiff(i)%eq_a = self%kbr1b_both(i + 2)%eq_a + self%kbr1b_both(i)%eq_a - 2.0_wp * self%kbr1b_both(i + 1)%eq_a
+            self%kbr1b_2degdiff(i)%eq_b = self%kbr1b_both(i + 2)%eq_b + self%kbr1b_both(i)%eq_b - 2.0_wp * self%kbr1b_both(i + 1)%eq_b
+        end do create_2degdiff_loop
+        
+        create_3degdiff_loop: do i = 1, size(self%kbr1b_3degdiff), 1
+            self%kbr1b_3degdiff(i)%eq_a = self%kbr1b_2degdiff(i + 1)%eq_a + self%kbr1b_2degdiff(i)%eq_a
+            self%kbr1b_3degdiff(i)%eq_b = self%kbr1b_2degdiff(i + 1)%eq_b + self%kbr1b_2degdiff(i)%eq_b
+        end do create_3degdiff_loop
+        
+        write(c_index_motiv, "(i1)") i_index_motiv
+        call logger%info('phase_centre_vad', 'create the equations to be solved successfully of Motivation '//c_index_motiv)
+
+    end subroutine create_eq_dynamics
 
     subroutine assert_maneuver(self, i_maneuver_time)
         class(satellite)                , intent(inout)      :: self
@@ -1980,9 +2255,9 @@ contains
     subroutine create_phase_centre_vad_eq(self, i_index_motiv)
         class(satellite)    , INTENT(INOUT)                  :: self
         integer(kind=ip)    , INTENT(IN   ), OPTIONAL        :: i_index_motiv
-        type(hashtable)                                      :: q_scac, q_scad, q_gnva, q_gnvb
+        type(hashtable)                                      :: q_scac, q_scad, q_gnia, q_gnib
         integer(kind=ip)                                     :: i, ios, j, istat
-        integer(kind=ip)                                     :: tkbr, tscac, tscad, tgnva, tgnvb
+        integer(kind=ip)                                     :: tkbr, tscac, tscad, tgnia, tgnib
         real(kind=wp), ALLOCATABLE                           :: q_c(:), q_d(:), i_c(:), i_d(:)
         real(kind=wp)                                        :: range_res_ave
         real(kind=wp)                                        :: temp
@@ -2019,6 +2294,7 @@ contains
         !     !write(424, '(6f30.15)') self%kbr1b_both(i)%pos_i_lead, self%kbr1b_both(i)%pos_i_trac
         ! end do simu_range
 
+        !>------------------------------------------------------------------------------------------
         !> obtain position vector in the inertial frame
         !> using hash table
         call q_gnva%init(nitems=size(self%gps1b_lead))
@@ -2031,19 +2307,24 @@ contains
             stop
         end if
         
-        put_gps_value: do i = 1, size(self%gps1b_lead), 1
+        put_gnv_value: do i = 1, size(self%gps1b_lead), 1
             tgnva = int(self%gps1b_lead(i)%gpst_gps1b)
             tgnvb = int(self%gps1b_trac(i)%gpst_gps1b)
-            call q_gnva%put(key=tgnva, rvals=self%gps1b_lead(i)%pos_i)
-            call q_gnvb%put(key=tgnvb, rvals=self%gps1b_trac(i)%pos_i)
-        end do put_gps_value
+            call q_gnva%put(key=tgnva, rvals=self%gps1b_lead(i)%pos_e)
+            call q_gnvb%put(key=tgnvb, rvals=self%gps1b_trac(i)%pos_e)
+        end do put_gnv_value
 
-        create_eqb: do i = 1, size(self%kbr1b_both), 1
+        create_acc: do i = 1, size(self%kbr1b_both), 1
             !> quaternion to rotation matrix section
             tkbr = int(self%kbr1b_both(i)%gpst_kbr1b)
             if (q_gnva%has_key(tkbr)) then
+                !> get position vector in the earth-fixed frame from the hash table
                 call q_gnva%get(key=tkbr, rvals=i_c)
-                self%kbr1b_both(i)%pos_i_lead = i_c
+                !> assign the position vector to the kbr1b_both
+                self%kbr1b_both(i)%pos_e_lead = i_c
+                !> get the gravitational acceleration of the earth-fixed frame 
+                call accxyz(self%kbr1b_both(i)%pos_e_lead, self%kbr1b_both(i)%wp_acc_grav_lead_e, &
+                             60_ip, self%cs_coeffs%c_coeffs, self%cs_coeffs%s_coeffs)
             else
                 call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
                 call xml_o%xml2file(1, 'time tags of KBR data and KOE data not compatible')
@@ -2051,6 +2332,50 @@ contains
             end if
             if (q_gnvb%has_key(tkbr)) then
                 call q_gnvb%get(key=tkbr, rvals=i_d)
+                self%kbr1b_both(i)%pos_e_trac = i_d
+                !> get the gravitational acceleration of the earth-fixed frame 
+                call accxyz(self%kbr1b_both(i)%pos_e_trac, self%kbr1b_both(i)%wp_acc_grav_trac_e, &
+                             60_ip, self%cs_coeffs%c_coeffs, self%cs_coeffs%s_coeffs)
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
+                call xml_o%xml2file(1, "time tags of KBR data and KOE data not compatible")
+                stop
+            end if
+        end do create_acc
+
+        !>------------------------------------------------------------------------------------------
+        !> obtain position vector in the inertial frame
+        !> using hash table
+        call q_gnia%init(nitems=size(self%gps1b_lead))
+        call q_gnib%init(nitems=size(self%gps1b_trac))
+
+        !> check if the nrows of sca_lead and sca_track are the same
+        if (size(self%gps1b_lead) /= size(self%gps1b_trac)) then
+            call logger%error('phase_centre_vad', 'the number of lines of two SCA files are different')
+            call xml_o%xml2file(1, 'the number of lines of two SCA files are different')
+            stop
+        end if
+        
+        put_gps_value: do i = 1, size(self%gps1b_lead), 1
+            tgnia = int(self%gps1b_lead(i)%gpst_gps1b)
+            tgnib = int(self%gps1b_trac(i)%gpst_gps1b)
+            call q_gnia%put(key=tgnia, rvals=self%gps1b_lead(i)%pos_i)
+            call q_gnib%put(key=tgnib, rvals=self%gps1b_trac(i)%pos_i)
+        end do put_gps_value
+
+        create_eqb: do i = 1, size(self%kbr1b_both), 1
+            !> quaternion to rotation matrix section
+            tkbr = int(self%kbr1b_both(i)%gpst_kbr1b)
+            if (q_gnia%has_key(tkbr)) then
+                call q_gnia%get(key=tkbr, rvals=i_c)
+                self%kbr1b_both(i)%pos_i_lead = i_c
+            else
+                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
+                call xml_o%xml2file(1, 'time tags of KBR data and KOE data not compatible')
+                stop
+            end if
+            if (q_gnib%has_key(tkbr)) then
+                call q_gnib%get(key=tkbr, rvals=i_d)
                 self%kbr1b_both(i)%pos_i_trac = i_d
             else
                 call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
@@ -2058,7 +2383,7 @@ contains
                 stop
             end if
             self%kbr1b_both(i)%range_pod = norm2(self%kbr1b_both(i)%pos_i_lead - self%kbr1b_both(i)%pos_i_trac)
-        end do create_eqb
+        end do create_acc
 
         !close(424)
         !stop
