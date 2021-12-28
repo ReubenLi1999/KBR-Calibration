@@ -292,9 +292,9 @@ contains
     subroutine create_eq_dynamics(self, i_index_motiv)
         class(satellite)    , INTENT(INOUT)                  :: self
         integer(kind=ip)    , INTENT(IN   ), OPTIONAL        :: i_index_motiv
-        type(hashtable)                                      :: q_scac, q_scad, q_gnia, q_gnib
+        type(hashtable)                                      :: q_scac, q_scad, q_gnia, q_gnib, q_gnva, q_gnvb
         integer(kind=ip)                                     :: i, ios, j, istat
-        integer(kind=ip)                                     :: tkbr, tscac, tscad, tgnia, tgnib
+        integer(kind=ip)                                     :: tkbr, tscac, tscad, tgnia, tgnib, tgnva, tgnvb
         real(kind=wp), ALLOCATABLE                           :: q_c(:), q_d(:), i_c(:), i_d(:)
         real(kind=wp)                                        :: range_res_ave
         real(kind=wp)                                        :: temp
@@ -2297,55 +2297,6 @@ contains
         !>------------------------------------------------------------------------------------------
         !> obtain position vector in the inertial frame
         !> using hash table
-        call q_gnva%init(nitems=size(self%gps1b_lead))
-        call q_gnvb%init(nitems=size(self%gps1b_trac))
-
-        !> check if the nrows of sca_lead and sca_track are the same
-        if (size(self%gps1b_lead) /= size(self%gps1b_trac)) then
-            call logger%error('phase_centre_vad', 'the number of lines of two SCA files are different')
-            call xml_o%xml2file(1, 'the number of lines of two SCA files are different')
-            stop
-        end if
-        
-        put_gnv_value: do i = 1, size(self%gps1b_lead), 1
-            tgnva = int(self%gps1b_lead(i)%gpst_gps1b)
-            tgnvb = int(self%gps1b_trac(i)%gpst_gps1b)
-            call q_gnva%put(key=tgnva, rvals=self%gps1b_lead(i)%pos_e)
-            call q_gnvb%put(key=tgnvb, rvals=self%gps1b_trac(i)%pos_e)
-        end do put_gnv_value
-
-        create_acc: do i = 1, size(self%kbr1b_both), 1
-            !> quaternion to rotation matrix section
-            tkbr = int(self%kbr1b_both(i)%gpst_kbr1b)
-            if (q_gnva%has_key(tkbr)) then
-                !> get position vector in the earth-fixed frame from the hash table
-                call q_gnva%get(key=tkbr, rvals=i_c)
-                !> assign the position vector to the kbr1b_both
-                self%kbr1b_both(i)%pos_e_lead = i_c
-                !> get the gravitational acceleration of the earth-fixed frame 
-                call accxyz(self%kbr1b_both(i)%pos_e_lead, self%kbr1b_both(i)%wp_acc_grav_lead_e, &
-                             60_ip, self%cs_coeffs%c_coeffs, self%cs_coeffs%s_coeffs)
-            else
-                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
-                call xml_o%xml2file(1, 'time tags of KBR data and KOE data not compatible')
-                stop
-            end if
-            if (q_gnvb%has_key(tkbr)) then
-                call q_gnvb%get(key=tkbr, rvals=i_d)
-                self%kbr1b_both(i)%pos_e_trac = i_d
-                !> get the gravitational acceleration of the earth-fixed frame 
-                call accxyz(self%kbr1b_both(i)%pos_e_trac, self%kbr1b_both(i)%wp_acc_grav_trac_e, &
-                             60_ip, self%cs_coeffs%c_coeffs, self%cs_coeffs%s_coeffs)
-            else
-                call logger%error('phase_centre_vad', 'time tags of KBR data and KOE data not compatible')
-                call xml_o%xml2file(1, "time tags of KBR data and KOE data not compatible")
-                stop
-            end if
-        end do create_acc
-
-        !>------------------------------------------------------------------------------------------
-        !> obtain position vector in the inertial frame
-        !> using hash table
         call q_gnia%init(nitems=size(self%gps1b_lead))
         call q_gnib%init(nitems=size(self%gps1b_trac))
 
@@ -2383,7 +2334,7 @@ contains
                 stop
             end if
             self%kbr1b_both(i)%range_pod = norm2(self%kbr1b_both(i)%pos_i_lead - self%kbr1b_both(i)%pos_i_trac)
-        end do create_acc
+        end do create_eqb
 
         !close(424)
         !stop

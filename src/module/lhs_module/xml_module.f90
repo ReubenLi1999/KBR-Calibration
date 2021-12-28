@@ -10,7 +10,6 @@ module xml_module
     use datetime_wrapper
     
     implicit none
-
     type, extends(io_file), public:: xml_file
         type(parameterlist_t)                                   :: urlpaths
     contains
@@ -21,8 +20,44 @@ module xml_module
     end type xml_file
     
     type(xml_file)                                              :: xml_i, xml_o
+
+    PRIVATE                                                     :: content4tag, flag4tag
     
 contains
+
+    pure function flag4tag(c_input) result(c_output)
+        character(len=*)                , INTENT(IN   )         :: c_input
+        !> output
+        CHARACTER(len=*)                                        :: c_output
+
+        !> local
+        integer(kind=ip), DIMENSION(2)                          :: left, right
+
+        !> the index of "<" and ">"
+        left(1) = index( c_input, "<")
+        left(2) = index( c_input(left(1) + 1: 3000), "<") + left(1)
+        right(1) = index(c_input, ">")
+        right(2) = index(c_input(right(1) + 1: 3000), ">") + right(1)
+        !> start time
+        c_output = c_input(left(1) + 1_ip: right(1) - 1_ip)
+    end function flag4tag
+
+    pure function content4tag(c_input) result(c_output)
+        character(len=*)                , INTENT(IN   )         :: c_input
+        !> output
+        CHARACTER(len=*)                                        :: c_output
+
+        !> local
+        integer(kind=ip), DIMENSION(2)                          :: left, right
+
+        !> the index of "<" and ">"
+        left(1) = index( c_input, "<")
+        left(2) = index( c_input(left(1) + 1: 3000), "<") + left(1)
+        right(1) = index(c_input, ">")
+        right(2) = index(c_input(right(1) + 1: 3000), ">") + right(1)
+        !> start time
+        c_output = c_input(right(1) + 1: left(2) - 1)
+    end function content4tag
 
     subroutine xml2file(self, ReturnCode, errorinfo)
         class(xml_file)                 , INTENT(INOUT)         :: self
@@ -171,6 +206,11 @@ contains
         integer(kind=ip)                                        :: i_date_d, i_date_m, i_date_y
         integer(kind=ip)                                        :: i_start_epoch, i_duration
         integer(kind=ip)                                        :: i_date_num(6)
+        integer(kind=ip)                                        :: i_days
+        integer(kind=ip)                                        :: i_count_inputinfo
+        integer(kind=ip)                                        :: i_count_sca1b_a, i_count_sca1b_b, i_count_tha1b_a, i_count_tha1b_b, &
+                                                                   i_count_roi1b_a, i_count_roi1b_b, i_count_koe1b_a, i_count_koe1b_b, &
+                                                                   i_count_acc1b_a, i_count_acc1b_b, i_count_kbr1b_x
         integer(kind=ip), INTENT(  OUT)                         :: i_maneuver_time(8), i_mirror
         character(len=3000)                                     :: temp1, temp2, temp3, flag
         character(len=3000)                                     :: c_temp2, c_temp3, c_start_epoch, c_duration
@@ -187,6 +227,11 @@ contains
         character(len=2)                                        :: c_date_d, c_date_m
         character(len=4)                                        :: c_date_y
         CHARACTER(len=1)                                        :: c_mirror !< character indicating mirror maneuver
+        CHARACTER(len=3000), dimension(4)                       :: c_kbr1b_x, c_acc1b_a, c_acc1b_b, &
+                                                                   c_sca1b_a, c_sca1b_b, c_roi1b_a, &
+                                                                   c_roi1b_b, c_koe1b_a, c_koe1b_b, &
+                                                                   c_tha1b_a, c_tha1b_b
+        character(len=3000)                                     :: c_vac1b_a, c_vac1b_b, c_gkb1b_a, c_gkb1b_b
 
         !> datetime
         type(datetime_type)                                     :: start_epoch, man1, man2, man3, man4
@@ -195,7 +240,6 @@ contains
         !> assign the start epoch for cumulating second
         start_epoch = create_datetime(2009, 1, 1, 0, 0, 0)
 
-        ! call pyplot_demo
         !> filenames that must appear in the config folder
         config_names = [ &
             '2001JIYI.txt', '2002JIYI.txt', '2003JIYI.txt', '2004JIYI.txt', '2005JIYI.txt', &
@@ -237,105 +281,72 @@ contains
             end if
             if (reason < 0) exit
             !> -------------------------------------------------------------------------------------
-            !> Maneuver-1
-            if (index(temp1, "<ManeuverStart-1>") /= 0) then
+            !> Maneuverstarttime
+            if (index(temp1, "<ManeuverStartTime>") /= 0) then
                 !> the index of "<" and ">"
                 left(1) = index(temp1, "<")
                 left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
                 right(1) = index(temp1, ">")
                 right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
-                !> version
-                call date2num(temp1(right(1) + 1: left(2) - 1), i_date_num)
-                man1 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
+                !> start time
+                call split(temp1(right(1) + 1: left(2) - 1), path, delimiters=';', order='sequential', nulls='ignore')
+                !> make sure the dimension of maneuver start time is 4
+                if (size(path) /= 4_ip) error stop "The dimension of tag <ManneuverStartTime> is not four"
+                !> start time from string to num
+                split_start_time_loop: do i = 1, 4, 1
+                    call date2num(path(i), i_date_num)
+                    man1 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
                                        i_date_num(5), i_date_num(6))
-                delta_man1 = man1 - start_epoch
-                i_start_epoch = delta_man1%total_seconds()
-                i_maneuver_time(1) = i_start_epoch + 18_ip - 28800_ip
+                    delta_man1 = man1 - start_epoch
+                    i_start_epoch = delta_man1%total_seconds()
+                    select case (i)
+                        case (1)
+                            i_maneuver_time(3) = i_start_epoch + 18_ip - 28800_ip
+                        case (2)
+                            i_maneuver_time(7) = i_start_epoch + 18_ip - 28800_ip
+                        case (3)
+                            i_maneuver_time(1) = i_start_epoch + 18_ip - 28800_ip
+                        case (4)
+                            i_maneuver_time(5) = i_start_epoch + 18_ip - 28800_ip
+                        case default
+                            error stop "The dimension of tag <ManneuverStartTime> is not four"
+                    end select
+                end do split_start_time_loop
+                !> get the number of days
+                call date2num(path(1), i_date_num)
+                man1 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), 0_ip, 0_ip, 0_ip)
+                do i = 2, 4, 1
+                    call date2num(path(i), i_date_num)
+                    man2 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), 0_ip, 0_ip, 0_ip)
+                    if 
+                end do
             end if
-            if (index(temp1, "<ManeuverDuration-1>") /= 0) then
+            if (index(temp1, "<ManeuverTimeLength>") /= 0) then
                 !> the index of "<" and ">"
                 left(1) = index(temp1, "<")
                 left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
                 right(1) = index(temp1, ">")
                 right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
-                !> version
-                call str2int(temp1(right(1) + 1: left(2) - 1), i_duration, err)
-                i_maneuver_time(2) = i_duration + i_maneuver_time(1) - 1_ip
-            end if
-            !> Maneuver-2
-            if (index(temp1, "<ManeuverStart-2>") /= 0) then
-                !> the index of "<" and ">"
-                left(1) = index(temp1, "<")
-                left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
-                right(1) = index(temp1, ">")
-                right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
-                !> version
-                call date2num(temp1(right(1) + 1: left(2) - 1), i_date_num)
-                man2 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
-                                       i_date_num(5), i_date_num(6))
-                delta_man2 = man2 - start_epoch
-                i_start_epoch = delta_man2%total_seconds()
-                i_maneuver_time(3) = i_start_epoch + 18_ip - 28800_ip
-            end if
-            if (index(temp1, "<ManeuverDuration-2>") /= 0) then
-                !> the index of "<" and ">"
-                left(1) = index(temp1, "<")
-                left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
-                right(1) = index(temp1, ">")
-                right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
-                !> version
-                call str2int(temp1(right(1) + 1: left(2) - 1), i_duration, err)
-                i_maneuver_time(4) = i_duration + i_maneuver_time(3) - 1_ip
-            end if
-            !> Maneuver-3
-            if (index(temp1, "<ManeuverStart-3>") /= 0) then
-                !> the index of "<" and ">"
-                left(1) = index(temp1, "<")
-                left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
-                right(1) = index(temp1, ">")
-                right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
-                !> version
-                call date2num(temp1(right(1) + 1: left(2) - 1), i_date_num)
-                man3 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
-                                       i_date_num(5), i_date_num(6))
-                delta_man3 = man3 - start_epoch
-                i_start_epoch = delta_man3%total_seconds()
-                i_maneuver_time(5) = i_start_epoch + 18_ip - 28800_ip
-            end if
-            if (index(temp1, "<ManeuverDuration-3>") /= 0) then
-                !> the index of "<" and ">"
-                left(1) = index(temp1, "<")
-                left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
-                right(1) = index(temp1, ">")
-                right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
-                !> version
-                call str2int(temp1(right(1) + 1: left(2) - 1), i_duration, err)
-                i_maneuver_time(6) = i_duration + i_maneuver_time(5) - 1_ip
-            end if
-            !> Maneuver-4
-            if (index(temp1, "<ManeuverStart-4>") /= 0) then
-                !> the index of "<" and ">"
-                left(1) = index(temp1, "<")
-                left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
-                right(1) = index(temp1, ">")
-                right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
-                !> version
-                call date2num(temp1(right(1) + 1: left(2) - 1), i_date_num)
-                man4 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
-                                       i_date_num(5), i_date_num(6))
-                delta_man4 = man4 - start_epoch
-                i_start_epoch = delta_man4%total_seconds()
-                i_maneuver_time(7) = i_start_epoch + 18_ip - 28800_ip
-            end if
-            if (index(temp1, "<ManeuverDuration-4>") /= 0) then
-                !> the index of "<" and ">"
-                left(1) = index(temp1, "<")
-                left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
-                right(1) = index(temp1, ">")
-                right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
-                !> version
-                call str2int(temp1(right(1) + 1: left(2) - 1), i_duration, err)
-                i_maneuver_time(8) = i_duration + i_maneuver_time(7) - 1_ip
+                !> duration
+                call split(temp1(right(1) + 1: left(2) - 1), path, delimiters=';', order='sequential', nulls='ignore')
+                !> make sure the dimension of maneuver start time is 4
+                if (size(path) /= 4_ip) error stop "The dimension of tag <ManneuverTimeLength> is not four"
+                !> start time from string to num
+                split_duration_loop: do i = 1, 4, 1
+                    call str2int(path(i), i_duration, err)
+                    select case (i)
+                        case (1)
+                            i_maneuver_time(4) = i_duration + i_maneuver_time(3) - 1_ip
+                        case (2)
+                            i_maneuver_time(8) = i_duration + i_maneuver_time(7) - 1_ip
+                        case (3)
+                            i_maneuver_time(2) = i_duration + i_maneuver_time(1) - 1_ip
+                        case (4)
+                            i_maneuver_time(6) = i_duration + i_maneuver_time(5) - 1_ip
+                        case default
+                            error stop "The dimension of tag <ManneuverTimeLength> is not four"
+                    end select
+                end do split_duration_loop
             end if
 
             !> config path
@@ -382,6 +393,7 @@ contains
                 !> version
                 version = temp1(right(1) + 1: left(2) - 1)
             end if
+
             !> date
             if (index(temp1, "<CalibrationDataTime>")) then
                 !> the index of "<" and ">"
@@ -400,9 +412,22 @@ contains
                 read(c_date_d, "(i)") i_date_d
                 i_date_dayofyear = dayofyear(i_date_d, i_date_m, i_date_y) + i_date_y * 1000_ip
             end if
+
             !> InputFileInfoList
-            if (index(temp1, "<InputFileInfo>")) then
-                read_in_flag_path: do
+            if (index(temp1, "<InputFileInfoList>")) then
+                i_count_inputinfo = 0_ip
+                i_count_acc1b_a = 0_ip
+                i_count_acc1b_b = 0_ip
+                i_count_koe1b_a = 0_ip
+                i_count_koe1b_b = 0_ip
+                i_count_roi1b_a = 0_ip
+                i_count_roi1b_b = 0_ip
+                i_count_tha1b_a = 0_ip
+                i_count_tha1b_b = 0_ip
+                i_count_sca1b_a = 0_ip
+                i_count_sca1b_b = 0_ip
+                i_count_kbr1b_x = 0_ip
+                read_input_flag_path: do
                     read(self%unit, "(a)") temp1
                     !> skip the blank line
                     if (index(temp1, '>') == 0) cycle
@@ -410,52 +435,76 @@ contains
                     if (index(temp1, achar(9)) /= 0) then
                         temp1 = trim(temp1(index(temp1, achar(9), back=.true.) + 1: len_trim(temp1)))
                     end if
-                    if (index(temp1, "</InputFileInfo>")) exit
-                    !> the index of "<" and ">"
-                    left(1) = index(temp1, "<")
-                    left(2) = index(temp1(left(1) + 1: 3000), "<") + left(1)
-                    right(1) = index(temp1, ">")
-                    right(2) = index(temp1(right(1) + 1: 3000), ">") + right(1)
-                    !> product flag
-                    flag = temp1(left(1) + 1_ip: right(1) - 1_ip)
+                    if (index(temp1, "</InputFileInfoList>")) exit
+                    !> flag for the tag
+                    flag = flag4tag(temp1)
+                    select case (flag)
+                        case ('InputFileInfo')
+                            i_count_inputinfo = i_count_inputinfo + 1_ip
+                            if (i_count_inputinfo > 4_ip) error stop "The dimension of tag <InputFileInfo> is greater than 4"
+                        case ('ACC1B-AFile')
+                            c_acc1b_a(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_acc1b_a = i_count_acc1b_a + 1_ip
+                            if (i_count_inputinfo /= i_count_acc1b_a) error stop "Error dimension of tag <ACC1B-A>"
+                        case ('ACC1B-BFile')
+                            c_acc1b_b(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_acc1b_b = i_count_acc1b_b + 1_ip
+                            if (i_count_inputinfo /= i_count_acc1b_b) error stop "Error dimension of tag <ACC1B-B>"
+                        case ('KOE1B-AFile')
+                            c_koe1b_a(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_koe1b_a = i_count_koe1b_a + 1_ip
+                            if (i_count_inputinfo /= i_count_koe1b_a) error stop "Error dimension of tag <KOE1B-A>"
+                        case ('KOE1B-BFile')
+                            c_koeb_b(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_koe1b_b = i_count_koe1b_b + 1_ip
+                            if (i_count_inputinfo /= i_count_koe1b_b) error stop "Error dimension of tag <KOE1B-B>"
+                        case ('ROI1B-AFile')
+                            c_roi1b_a(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_roi1b_a = i_count_roi1b_a + 1_ip
+                            if (i_count_inputinfo /= i_count_roi1b_a) error stop "Error dimension of tag <ROI1B-A>"
+                        case ('ROI1B-BFile'
+                            c_roi1b_b(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_roi1b_b= i_count_roi1b_b + 1_ip
+                            if (i_count_inputinfo /= i_count_roi1b_b) error stop "Error dimension of tag <ROI1B-B>"
+                        case ('THA1B-AFile')
+                            c_tha1b_a(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_tha1b_a = i_count_tha1b_a + 1_ip
+                            if (i_count_inputinfo /= i_count_tha1b_a) error stop "Error dimension of tag <THA1B-A>"
+                        case ('THA1B-BFile')
+                            c_tha1b_b(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_tha1b_b = i_count_tha1b_b + 1_ip
+                            if (i_count_inputinfo /= i_count_tha1b_b) error stop "Error dimension of tag <THA1B-B>"
+                        case ('SCA1B-AFile')
+                            c_sca1b_a(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_sca1b_a = i_count_sca1b_a + 1_ip
+                            if (i_count_inputinfo /= i_count_sca1b_a) error stop "Error dimension of tag <SCA1B-A>"
+                        case ('SCA1B-BFile')
+                            c_sca1b_a(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_sca1b_a = i_count_sca1b_a + 1_ip
+                            if (i_count_inputinfo /= i_count_sca1b_b) error stop "Error dimension of tag <SCA1B-B>"
+                        case ('KBR1BFile')
+                            c_kbr1b_x(i_count_inputinfo) = folder_walk_win(content4tag(temp1), flag)
+                            i_count_kbr1b_x = i_count_kbr1b_x + 1_ip
+                            if (i_count_inputinfo /= i_count_kbr1b_x) error stop "Error dimension of tag <KBR1B-X>"
+                        case ('GKB1B-AFile')
+                            c_gkb1b_a = folder_walk_win(content4tag(temp1), flag)
+                        case ('GKB1B-BFile')
+                            c_gkb1b_b = folder_walk_win(content4tag(temp1), flag)
+                        case ('VAC1B-AFile')
+                            c_vac1b_a = folder_walk_win(content4tag(temp1), flag)
+                        case ('VAC1B-BFile')
+                            c_vac1b_b = folder_walk_win(content4tag(temp1), flag)
+                        case ('/InputFileInfo')
+                        case default
+                            error stop "Unknown flag encountered"
+                    end select
                     
-                    !> path array
-                    if (index(temp1(right(1) + 1: left(2) - 1), ",") /= 0) then
-                        call split(temp1(right(1) + 1: left(2) - 1), path, delimiters=',', order='sequential', nulls='ignore')
-                        allocate(c_path(size(path)), stat=err)
-                        if (err /= 0) print *, "c_path: Allocation request denied"
-                        !> folder walk
-                        do k = 1, size(path), 1
-                            paths = folder_walk_win(path(k), flag)
-                            if (size(paths) /= 1) Then
-                                call logger%fatal("math_collection_module", trim(flag)//" files not appear in "//temp1(right(1) + 1: left(2) - 1))
-                                call xml_o%xml2file(1, trim(flag)//" files not appear in the input folder")
-                                stop trim(flag)//" files not appear in the input folder"
-                            end if
-                            c_path(k) = trim(paths(1))
-                        end do
-                    else
-                        allocate(c_path(1), stat=err)
-                        paths = folder_walk_win(temp1(right(1) + 1: left(2) - 1), flag)
-                        if (size(paths) /= 1) Then
-                            call logger%fatal("math_collection_module", trim(flag)//" files not appear in "//temp1(right(1) + 1: left(2) - 1))
-                            call xml_o%xml2file(1, trim(flag)//" files not appear in the input folder")
-                            stop trim(flag)//" files not appear in the input folder"
-                        end if
-                        c_path = paths(1)
-                    end if
-                    
-                    
-                    fplerror = self%urlpaths%set(key=trim(flag), value=c_path)
-                    if (ALLOCATED(paths)) DEALLOCATE(paths, stat=err)
-                    if (err /= 0) print *, "c_path: Deallocation request denied"
-                    if (allocated(c_path)) deallocate(c_path, stat=err)
-                    if (err /= 0) print *, "c_path: Deallocation request denied"
-                end do read_in_flag_path
+                end do read_input_flag_path
             end if
+
             !> ExternalFileList
             if (index(temp1, "<ExternalFileList>")) then
-                read_in_ex: do   
+                read_in_ex: do
                     read(self%unit, "(a)") temp1
                     !> skip the blank line
                     if (index(temp1, '>') == 0) cycle
