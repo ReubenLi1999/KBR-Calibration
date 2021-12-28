@@ -2928,9 +2928,9 @@ contains
 
             !> init the file obj
             ifiles_loop: do ind = 1, size(value), 1
-                !> ind cannot greater than 2
-                if (ind > 2_ip) then
-                    call logger%error('phase_centre_vad', 'You must perform the maneuvers within two days')
+                !> ind cannot greater than 4
+                if (ind > 4_ip) then
+                    call logger%error('phase_centre_vad', 'You must perform the maneuvers within four days')
                     call xml_o%xml2file(1, 'You must perform the maneuvers within two days')
                     stop
                 end if

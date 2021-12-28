@@ -136,6 +136,14 @@ contains
         read(str,*,iostat=stat)  int
     end subroutine str2int
 
+    function int2str(int) result(str)
+        ! Arguments
+        character(len=3000)         :: str
+        integer,intent(in)          :: int
+
+        read(int,*)  str
+    end function int2str
+
     function std(wp_input) result(wp_std)
         !> input
         real(kind=wp)                   , INTENT(IN   )                 :: wp_input(:)
