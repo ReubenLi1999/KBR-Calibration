@@ -1860,12 +1860,12 @@ contains
     end function ParameterListIterator_GetIndex
 
 
-    function ParameterListIterator_GetShape(this, Shape) result(FPLError)
+    function ParameterListIterator_GetShape(this, Shape1) result(FPLError)
     !-----------------------------------------------------------------
     !< Return an allocatable array with the shape of the contained value
     !-----------------------------------------------------------------
         class(ParameterListIterator_t),       intent(IN)    :: this     !< Parameter List Iterator
-        integer(I4P), allocatable,            intent(INOUT) :: Shape(:) !< Shape of the stored value
+        integer(I4P), allocatable,            intent(INOUT) :: Shape1(:) !< Shape of the stored value
         class(*),                    pointer                :: Wrapper  !< Wrapper
         integer(I4P)                                        :: FPLerror !< Error flag
     !-----------------------------------------------------------------
@@ -1875,7 +1875,7 @@ contains
         if(associated(Wrapper)) then
             select type(Wrapper)
                 class is (DimensionsWrapper_t)
-                    call Wrapper%GetShape(Shape)
+                    call Wrapper%GetShape(Shape1)
                 class Default
                     FPLerror = FPLWrapperError
                     call msg%Error(txt='Getting [Key="'//this%GetKey()//'"]: Unknown Wrapper. Shape was not modified.', &

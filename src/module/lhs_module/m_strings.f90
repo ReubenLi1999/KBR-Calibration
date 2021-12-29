@@ -874,12 +874,12 @@ character(*), intent(in) :: endings(:)
 logical                  :: matched
 integer                  :: i
    matched = .true.
-   FINDIT: block
+   !FINDIT: block
    do i=1, size(endings)
-       if(ends_with_str(string,trim(endings(i)))) exit FINDIT
+       if(ends_with_str(string,trim(endings(i)))) exit !FINDIT
    enddo
    matched = .false.
-   endblock FINDIT
+   !endblock FINDIT
 end function ends_with_any
 !===================================================================================================================================
 !()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()!
@@ -3786,15 +3786,15 @@ integer                        :: indent
 character(len=*),intent(in)    :: line
 integer                        :: i
    indent=0
-   NOTSPACE: block
+!   NOTSPACE: block
       SCAN: do i=1,len(line)
          if(line(i:i).ne.' ')then
             indent=i-1
-            exit NOTSPACE
+            exit! NOTSPACE
          endif
       enddo SCAN
       indent=len(line)
-   endblock NOTSPACE
+ !  endblock NOTSPACE
 end function indent
 !===================================================================================================================================
 !()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()!

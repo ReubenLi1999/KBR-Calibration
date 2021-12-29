@@ -145,7 +145,8 @@ contains
       !! written to the log file. Defaults to `trivia`.
     integer :: flag
     this%logfile = logfile
-    open(newunit=this%fileunit,file=this%logfile,action='write', &
+    this%fileunit = 1999
+    open(unit=this%fileunit,file=this%logfile,action='write', &
          asynchronous='yes',iostat=flag,status='replace')
     if (flag /= 0) error stop 'Error opening log file.'
     if (present(stderr_threshold)) then

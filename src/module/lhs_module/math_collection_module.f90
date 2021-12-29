@@ -5,8 +5,7 @@ module math_collection_module
     use lsqr_module
     use random_integer_module
     use io_file_module
-    use ogpf
-    use pyplot_module
+
     implicit none
     !>----------------------------------------------------------------------------------------------
     !@      Arthur          => Hao-si Li
@@ -184,8 +183,6 @@ contains
         real(kind=wp)                                                   :: wp_temp_array(size(wp_input))
         integer(kind=ip)                                                :: ip_j, ip_k
         
-        
-        
         wp_temp_array = wp_input
         do ip_j = 1, ubound(wp_temp_array, 1) - 1
             do ip_k = ip_j + 1, ubound(wp_temp_array, 1)
@@ -235,22 +232,6 @@ contains
         write(str, *)  int
     end function real2str
 
-    subroutine pyplot_demo
-        real(wp),dimension(100) :: x,sx
-        type(pyplot) :: plt
-        integer(ip) :: i, istat
-            
-        !generate some data:
-        x = [(real(i, wp), i=0, size(x) - 1)] / 5.0_wp
-        sx = sin(x)
-            
-        !plot it:
-        call plt%initialize(grid=.true., xlabel='angle (rad)', &
-                            title='Plot of $\sin(x)$', legend=.true.)
-        call plt%add_plot(x, sx, label='$\sin(x)$', linestyle='b-o', markersize=5, linewidth=2, istat=istat)
-        call plt%savefig('sinx.png', pyfile='sinx.py', ismat=.true., istat=istat)
-    end subroutine pyplot_demo
-
     pure function deg2rad(deg) result(rad)
         !> This is a function to perform the same function as numpy.deg2rad()
         !> input variable
@@ -279,7 +260,7 @@ contains
         CHARACTER(len=*), INTENT(IN   )         :: iflag
         
         !> output variable
-        CHARACTER(len=3000), ALLOCATABLE        :: paths(:)
+        CHARACTER(len=3000)                     :: paths
         
         !> temporary variable
         character(len=3000)                     :: temp
@@ -314,7 +295,7 @@ contains
         if ( ios /= 0 ) Then
             call logger%fatal("math_collection_module", "Error opening the folder walker list file")
             !call xml_o%xml2file(1, "Error opening the folder walker list file")
-            !stop
+            stop
         end if
         
         npaths = 0_ip
@@ -339,28 +320,19 @@ contains
         
         rewind(lists_file%unit)
         
-        allocate(paths(npaths), stat=err)
-        if (err /= 0) Then
-            call logger%fatal("math_collection_module", "paths: Allocation request denied")
-            stop
-        end if
-        
         j = 1_ip
         read_filenames_loop2: do i = 1, lists_file%nrow, 1
             read(lists_file%unit, "(a)") temp
             
             if (index(temp, "GSM") /= 0 .and. index(trim(temp), trim(id_temp)) /= 0 ) then
-                paths(j) = temp
+                paths = temp
                 j = j + 1_ip
             else
                 if (index(trim(temp), trim(iflag_temp)) /= 0 .and. index(trim(temp), trim(id_temp)) /= 0 .and. index(trim(temp), '.asc') /= 0) Then
-                    paths(j) = temp
+                    paths = temp
                     j = j + 1_ip
                 end if
             end if
-            
-            !> read all
-            if (trim(iflag_temp) == 'all') paths(i) = temp
         end do read_filenames_loop2
 
         close(unit=lists_file%unit, iostat=ios, status='delete')
@@ -368,7 +340,6 @@ contains
             call logger%fatal("math_collection_module", "Error closing the folder walker list file")
             stop
         end if
-        
     end function folder_walk_win
     
     function project_path(ipath) result(opath)
@@ -662,7 +633,7 @@ contains
                 k = k + 1_ip
             end do
         end do assign_a_loop
-
+        
         call solver%initialize(size(a_ival, 1), size(a_ival, 2), a, irow, icol)
         call solver%solve(b_ival, 0.0_wp, x_oval, istop)
 
@@ -758,6 +729,54 @@ contains
         
         convolve = y
     end function convolution
+
+    function linspace(start,end,num,endpoint,step) result(samples)
+        
+        ! PARAMETERS
+        real(wp), intent(in) :: start 
+            !! The starting value of the sequence.
+        real(wp), intent(in) :: end
+            !! The end value of the sequence, unless `endpoint` is set to `.false.`. 
+            !! In that case, the sequence consists of all but the last of `num + 1` 
+            !! evenly spaced samples, so that `end` is excluded. Note that the 
+            !! step size changes when `endpoint` is `.false.`.
+        integer(kind=ip), intent(in), optional :: num
+            !! Number of samples to generate. Default value is 50.
+        logical, intent(in), optional :: endpoint
+            !! If `.true.`, `end` is the last sample. Otherwise, it is not included. Default is `.true.`.
+        real(wp), intent(out), optional :: step
+            !! If present, `step` is the size of spacing between samples.
+
+        ! RETURNS
+        real(wp), allocatable :: samples(:)
+            !! There are `num` equally spaced samples in the closed interval `[start, stop]` or 
+            !! the half-open interval `[start, stop)` (depending on whether `endpoint` is `.true.` or `.false.`).
+
+        integer(kind=ip) :: num_, i
+        logical :: endpoint_
+        real(wp) :: step_
+
+        num_ = 50
+        if (present(num)) num_ = num
+
+        endpoint_ = .true.
+        if (present(endpoint)) endpoint_ = endpoint
+
+        ! find step size
+        if (endpoint_) then
+            step_ = (end - start)/real(num_-1,dp)
+        else
+            step_ = (end - start)/real(num_,dp)
+        end if
+
+        if (present(step)) step = step_
+
+        allocate(samples(num_))
+        do i = 1, num_
+            samples(i) = start + (i-1)*step_
+        end do
+    end function linspace
+
     function arange(xa, xb, dx)
         !..............................................................................
         !   returns a vector in the form of [xa, xa+dx, xa+2*dx, ...]
@@ -811,5 +830,157 @@ contains
         arange = [(xa + i*dxl, i=0, n)]
 
     end function arange
+    subroutine split(input_line,array,delimiters,order,nulls)
+!-----------------------------------------------------------------------------------------------------------------------------------
 
-end module math_collection_module
+! ident_8="@(#)M_strings::split(3f): parse string on delimiter characters and store tokens into an allocatable array"
+
+!  John S. Urban
+!-----------------------------------------------------------------------------------------------------------------------------------
+intrinsic index, min, present, len
+!-----------------------------------------------------------------------------------------------------------------------------------
+!  given a line of structure " par1 par2 par3 ... parn " store each par(n) into a separate variable in array.
+!    o by default adjacent delimiters in the input string do not create an empty string in the output array
+!    o no quoting of delimiters is supported
+character(len=*),intent(in)              :: input_line  ! input string to tokenize
+character(len=*),optional,intent(in)     :: delimiters  ! list of delimiter characters
+character(len=*),optional,intent(in)     :: order       ! order of output array sequential|[reverse|right]
+character(len=*),optional,intent(in)     :: nulls       ! return strings composed of delimiters or not ignore|return|ignoreend
+character(len=:),allocatable,intent(out) :: array(:)    ! output array of tokens
+!-----------------------------------------------------------------------------------------------------------------------------------
+integer                       :: n                      ! max number of strings INPUT_LINE could split into if all delimiter
+integer,allocatable           :: ibegin(:)              ! positions in input string where tokens start
+integer,allocatable           :: iterm(:)               ! positions in input string where tokens end
+character(len=:),allocatable  :: dlim                   ! string containing delimiter characters
+character(len=:),allocatable  :: ordr                   ! string containing order keyword
+character(len=:),allocatable  :: nlls                   ! string containing nulls keyword
+integer                       :: ii,iiii                ! loop parameters used to control print order
+integer                       :: icount                 ! number of tokens found
+integer                       :: ilen                   ! length of input string with trailing spaces trimmed
+integer                       :: i10,i20,i30            ! loop counters
+integer                       :: icol                   ! pointer into input string as it is being parsed
+integer                       :: idlim                  ! number of delimiter characters
+integer                       :: ifound                 ! where next delimiter character is found in remaining input string data
+integer                       :: inotnull               ! count strings not composed of delimiters
+integer                       :: ireturn                ! number of tokens returned
+integer                       :: imax                   ! length of longest token
+!-----------------------------------------------------------------------------------------------------------------------------------
+   ! decide on value for optional DELIMITERS parameter
+   if (present(delimiters)) then                                     ! optional delimiter list was present
+      if(delimiters.ne.'')then                                       ! if DELIMITERS was specified and not null use it
+         dlim=delimiters
+      else                                                           ! DELIMITERS was specified on call as empty string
+         dlim=' '//char(9)//char(10)//char(11)//char(12)//char(13)//char(0) ! use default delimiter when not specified
+      endif
+   else                                                              ! no delimiter value was specified
+      dlim=' '//char(9)//char(10)//char(11)//char(12)//char(13)//char(0)    ! use default delimiter when not specified
+   endif
+   idlim=len(dlim)                                                   ! dlim a lot of blanks on some machines if dlim is a big string
+!-----------------------------------------------------------------------------------------------------------------------------------
+   if(present(order))then; ordr=order; else; ordr='sequential'; endif ! decide on value for optional ORDER parameter
+   if(present(nulls))then; nlls=nulls; else; nlls='ignore'    ; endif ! optional parameter
+!-----------------------------------------------------------------------------------------------------------------------------------
+   n=len(input_line)+1                        ! max number of strings INPUT_LINE could split into if all delimiter
+   if(allocated(ibegin))deallocate(ibegin)    !*! intel compiler says allocated already ?
+   if(allocated(iterm))deallocate(iterm)      !*! intel compiler says allocated already ?
+   allocate(ibegin(n))                        ! allocate enough space to hold starting location of tokens if string all tokens
+   allocate(iterm(n))                         ! allocate enough space to hold ending location of tokens if string all tokens
+   ibegin(:)=1
+   iterm(:)=1
+!-----------------------------------------------------------------------------------------------------------------------------------
+   ilen=len(input_line)                                           ! ILEN is the column position of the last non-blank character
+   icount=0                                                       ! how many tokens found
+   inotnull=0                                                     ! how many tokens found not composed of delimiters
+   imax=0                                                         ! length of longest token found
+!-----------------------------------------------------------------------------------------------------------------------------------
+   if(ilen.gt.0)then                                              ! there is at least one non-delimiter in INPUT_LINE if get here
+      icol=1                                                      ! initialize pointer into input line
+      INFINITE: do i30=1,ilen,1                                   ! store into each array element
+         ibegin(i30)=icol                                         ! assume start new token on the character
+         if(index(dlim(1:idlim),input_line(icol:icol)).eq.0)then  ! if current character is not a delimiter
+            iterm(i30)=ilen                                       ! initially assume no more tokens
+            do i10=1,idlim                                        ! search for next delimiter
+               ifound=index(input_line(ibegin(i30):ilen),dlim(i10:i10))
+               IF(ifound.gt.0)then
+                  iterm(i30)=min(iterm(i30),ifound+ibegin(i30)-2)
+               endif
+            enddo
+            icol=iterm(i30)+2                                     ! next place to look as found end of this token
+            inotnull=inotnull+1                                   ! increment count of number of tokens not composed of delimiters
+         else                                                     ! character is a delimiter for a null string
+            iterm(i30)=icol-1                                     ! record assumed end of string. Will be less than beginning
+            icol=icol+1                                           ! advance pointer into input string
+         endif
+         imax=max(imax,iterm(i30)-ibegin(i30)+1)
+         icount=i30                                               ! increment count of number of tokens found
+         if(icol.gt.ilen)then                                     ! no text left
+            exit INFINITE
+         endif
+      enddo INFINITE
+   endif
+!-----------------------------------------------------------------------------------------------------------------------------------
+   select case (trim(adjustl(nlls)))
+   case ('ignore','','ignoreend')
+      ireturn=inotnull
+   case default
+      ireturn=icount
+   end select
+   allocate(character(len=imax) :: array(ireturn))                ! allocate the array to return
+   !allocate(array(ireturn))                                       ! allocate the array to return
+!-----------------------------------------------------------------------------------------------------------------------------------
+   select case (trim(adjustl(ordr)))                              ! decide which order to store tokens
+   case ('reverse','right') ; ii=ireturn ; iiii=-1                ! last to first
+   case default             ; ii=1       ; iiii=1                 ! first to last
+   end select
+!-----------------------------------------------------------------------------------------------------------------------------------
+   do i20=1,icount                                                ! fill the array with the tokens that were found
+      if(iterm(i20).lt.ibegin(i20))then
+         select case (trim(adjustl(nlls)))
+         case ('ignore','','ignoreend')
+         case default
+            array(ii)=' '
+            ii=ii+iiii
+         end select
+      else
+         array(ii)=input_line(ibegin(i20):iterm(i20))
+         ii=ii+iiii
+      endif
+   enddo
+!-----------------------------------------------------------------------------------------------------------------------------------
+   end subroutine split
+   
+   elemental pure function lower(str,begin,end) result (string)
+
+! ident_23="@(#)M_strings::lower(3f): Changes a string to lowercase over specified range"
+
+character(*), intent(in)     :: str
+character(len(str))          :: string
+integer,intent(in),optional  :: begin, end
+integer                      :: i
+integer                      :: ibegin, iend
+integer,parameter             :: diff = iachar('A')-iachar('a')
+   string = str
+   ibegin=1
+   iend=len_trim(str)
+
+   if (present(begin))then
+      ibegin = min(max(1,begin),iend)
+   endif
+
+   if (present(end))then
+      iend= max(1,min(iend,end))
+   endif
+
+   do concurrent (i = ibegin:iend)                   ! step thru each letter in the string in specified range
+      select case (str(i:i))
+      case ('A':'Z')
+         string(i:i) = char(iachar(str(i:i))-diff)   ! change letter to miniscule
+      case default
+      end select
+   enddo
+
+end function lower
+
+    end module math_collection_module
+    
+    

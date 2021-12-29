@@ -93,10 +93,10 @@
    implicit none
 
    class(lsqr_solver_ez),intent(out) :: me
-   integer,intent(in)                :: m       !! number of rows in `A` matrix
-   integer,intent(in)                :: n       !! number of columns in `A` matrix
-   integer,dimension(:),intent(in)   :: irow    !! row indices of nonzero elements of `A`
-   integer,dimension(:),intent(in)   :: icol    !! column indices of nonzero elements of `A`
+   integer(kind=ip),intent(in)                :: m       !! number of rows in `A` matrix
+   integer(kind=ip),intent(in)                :: n       !! number of columns in `A` matrix
+   integer(kind=ip),dimension(:),intent(in)   :: irow    !! row indices of nonzero elements of `A`
+   integer(kind=ip),dimension(:),intent(in)   :: icol    !! column indices of nonzero elements of `A`
    real(wp),dimension(:),intent(in)  :: a       !! nonzero elements of `A`
    real(wp),intent(in),optional      :: atol    !! relative error in definition of `A`
    real(wp),intent(in),optional      :: btol    !! relative error in definition of `b`
@@ -111,6 +111,9 @@
    if (any(icol>n)) error stop 'invalid icol or n in initialize_ez'
 
    me%num_nonzero_elements = size(irow)
+   allocate(me%irow(me%num_nonzero_elements))
+   allocate(me%icol(me%num_nonzero_elements))
+   ALLOCATE(me%a(size(a)))
    me%m     = m
    me%n     = n
    me%irow  = irow

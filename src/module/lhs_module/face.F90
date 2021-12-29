@@ -37,7 +37,7 @@ integer, parameter :: UCS4  = selected_char_kind('default')   !< Unicode charact
 ! parameters
 character(26), parameter :: UPPER_ALPHABET='ABCDEFGHIJKLMNOPQRSTUVWXYZ' !< Upper case alphabet.
 character(26), parameter :: LOWER_ALPHABET='abcdefghijklmnopqrstuvwxyz' !< Lower case alphabet.
-character(1),  parameter :: NL=new_line('a')                            !< New line character.
+!character(1),  parameter :: NL=new_line('a')                            !< New line character.
 character(1),  parameter :: ESCAPE=achar(27)                            !< "\" character.
 ! codes
 character(2), parameter :: CODE_START=ESCAPE//'['               !< Start ansi code, "\[".

@@ -18,7 +18,7 @@ module phase_centre_vad
     
     implicit none
     !include 'fftw3.f03'
-    include 'fftw/fftw3.f'
+    ! include 'fftw/fftw3.f'
     
     type, public :: kbr1a_data
         real(kind=wp)                                        :: gpst_intg
@@ -301,7 +301,7 @@ contains
         real(kind=wp)                                        :: intersatellite_range(size(self%kbr1b_both))
         character(len=14)                                    :: datenow
         character(len=1)                                     :: c_index_motiv
-        type(pyplot)                                         :: plt
+        !type(pyplot)                                         :: plt
         
         
         datenow = yyyymmddhhmmss()
@@ -593,7 +593,7 @@ contains
         real(kind=wp), allocatable                        :: wp_eqb_diff2(:), wp_eqb_diff3(:)
         real(kind=wp)                                     :: wp_nonsens_eqa(2, 4) !< the amplitude of four non-sensitive axises at
                                                                                   !< signal frequency and doubled signal frequency
-        type(pyplot)                                      :: plt
+        !type(pyplot)                                      :: plt
 
         !> normal matrix for four algorithms
         wp_normal_eqa_diff2 = 0.0_wp
@@ -923,7 +923,7 @@ contains
                 wp_cs(j, 3) = sin(4 * pi * wp_f_man * wp_time(j))
                 wp_cs(j, 4) = cos(4 * pi * wp_f_man * wp_time(j))
             end do assign_wo_cs_loop
-            
+
             wp_res(2: 5, i) = ls_solver(wp_cs, estimated)
             wp_res(6, i) = norm2(MATMUL(wp_cs, wp_res(2: 5, i)) - estimated)
             
@@ -942,7 +942,7 @@ contains
         integer(kind=ip)     , intent(in   )            :: motor_id
             
         !> temp 
-        type(pyplot)                                    :: plt
+        !type(pyplot)                                    :: plt
         real(kind=wp), allocatable                      :: a_valid(:, :)
         real(kind=wp), allocatable                      :: b_valid(:)
         real(kind=wp), allocatable                      :: a_valid_5times(:, :)
@@ -1155,7 +1155,7 @@ contains
         real(kind=wp)                                     :: wp_nonsens_eqa(2, 4) !< the amplitude of four non-sensitive axises at
                                                                                   !< signal frequency and doubled signal frequency
         
-        type(pyplot)                                      :: plt
+        !type(pyplot)                                      :: plt
         
         !>------------------------------------------------------------------------------------------
         !> raw filter
@@ -1438,6 +1438,7 @@ contains
         self%inverse_vector(3, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff2, wp_normal_eqb_diff2)
         self%inverse_vector(4, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff3, wp_normal_eqb_diff3)
         self%inverse_vector_n = self%inverse_vector
+        print *, self%inverse_vector(:, 3)
         !>------------------------------------------------------------------------------------------
 
         !> second time -----------------------------------------------------------------------------
@@ -1559,12 +1560,12 @@ contains
                                                 / jd_i(i)%wp_amp_freq(1, 2)
 
                     !> time domain
-                    self%inverse_vector(3, 2) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
-                                                            jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
-                                                            - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 3, 4, 5, 6]), &
-                                                                     self%inverse_vector_n(3, [1, 3, 4, 5, 6]))) &
-                                                / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
-                                                              wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2))
+                    ! self%inverse_vector(3, 2) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                    !                                         jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
+                    !                                         - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 3, 4, 5, 6]), &
+                    !                                                  self%inverse_vector_n(3, [1, 3, 4, 5, 6]))) &
+                    !                             / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2), &
+                    !                                           wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 2))
 
                     !> diff3
                     !> sensitive axis
@@ -1597,12 +1598,12 @@ contains
                                                 - self%inverse_vector_n(2, 6) * wp_nonsens_eqa(1, 4))&
                                                 / jd_i(i)%wp_amp_freq(1, 2)
                     !> time domain
-                    self%inverse_vector(4, 2) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
-                                                            jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
-                                                            - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 3, 4, 5, 6]), &
-                                                                     self%inverse_vector_n(4, [1, 3, 4, 5, 6]))) &
-                                                / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
-                                                              wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2))
+                    ! elf%inverse_vector(4, 2) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
+                    !                                        jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
+                    !                                        - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 3, 4, 5, 6]), &
+                    !                                                 self%inverse_vector_n(4, [1, 3, 4, 5, 6]))) &
+                    !                            / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2), &
+                    !                                          wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 2))
 
                 case (2)
                     !> diff2
@@ -1637,12 +1638,12 @@ contains
                                                 - self%inverse_vector_n(1, 6) * wp_nonsens_eqa(1, 4))&
                                                 / jd_i(i)%wp_amp_freq(1, 2)
                     !> time domain
-                    self%inverse_vector(3, 3) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
-                                                            jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
-                                                            - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 2, 4, 5, 6]), &
-                                                                     self%inverse_vector_n(3, [1, 2, 4, 5, 6]))) &
-                                                / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
-                                                              wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3))
+                    ! self%inverse_vector(3, 3) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
+                    !                                         jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
+                    !                                         - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 2, 4, 5, 6]), &
+                    !                                                  self%inverse_vector_n(3, [1, 2, 4, 5, 6]))) &
+                    !                             / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3), &
+                    !                                           wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 3))
                     
                     !> diff3
                     !> frequency domain
@@ -1676,12 +1677,12 @@ contains
                                                 - self%inverse_vector_n(2, 6) * wp_nonsens_eqa(1, 4))&
                                                 / jd_i(i)%wp_amp_freq(1, 2)
                     !> time domain
-                    self%inverse_vector(4, 3) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
-                                                            jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
-                                                            - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 2, 4, 5, 6]), &
-                                                                     self%inverse_vector_n(4, [1, 2, 4, 5, 6]))) &
-                                                / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
-                                                              wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3))
+                    ! self%inverse_vector(4, 3) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
+                    !                                         jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
+                    !                                         - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 2, 4, 5, 6]), &
+                    !                                                  self%inverse_vector_n(4, [1, 2, 4, 5, 6]))) &
+                    !                             / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3), &
+                    !                                           wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 3))
 
                 case (3)
                     !> diff2
@@ -1716,12 +1717,12 @@ contains
                                                 - self%inverse_vector_n(1, 6) * wp_nonsens_eqa(1, 4))&
                                                 / jd_i(i)%wp_amp_freq(1, 2)
                     !> time domain
-                    self%inverse_vector(3, 5) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
-                                                            jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
-                                                            - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 2, 3, 4, 6]), &
-                                                                     self%inverse_vector_n(3, [1, 2, 3, 4, 6]))) &
-                                                / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
-                                                              wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5))
+                    ! self%inverse_vector(3, 5) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                    !                                         jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
+                    !                                         - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 2, 3, 4, 6]), &
+                    !                                                  self%inverse_vector_n(3, [1, 2, 3, 4, 6]))) &
+                    !                             / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5), &
+                    !                                           wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 5))
                     
                     !> diff3
                     !> frequency domain
@@ -1754,12 +1755,12 @@ contains
                                                 - self%inverse_vector_n(1, 6) * wp_nonsens_eqa(1, 4))&
                                                 / jd_i(i)%wp_amp_freq(1, 2)
                     !> time domain
-                    self%inverse_vector(4, 5) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
-                                                            jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
-                                                            - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 2, 3, 4, 6]), &
-                                                                     self%inverse_vector_n(4, [1, 2, 3, 4, 6]))) &
-                                                / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
-                                                              wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5))
+                    ! self%inverse_vector(4, 5) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
+                    !                                         jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
+                    !                                         - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 2, 3, 4, 6]), &
+                    !                                                  self%inverse_vector_n(4, [1, 2, 3, 4, 6]))) &
+                    !                             / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5), &
+                    !                                           wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 5))
 
                 case (4)
                     !> diff2
@@ -1794,12 +1795,12 @@ contains
                                                 - self%inverse_vector_n(1, 5) * wp_nonsens_eqa(1, 4))&
                                                 / jd_i(i)%wp_amp_freq(1, 2)
                     !> time domain
-                    self%inverse_vector(3, 6) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
-                                                            jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
-                                                            - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 2, 3, 4, 5]), &
-                                                                     self%inverse_vector_n(3, [1, 2, 3, 4, 5]))) &
-                                                / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
-                                                              wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6))
+                    ! self%inverse_vector(3, 6) = dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                    !                                         jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
+                    !                                         - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 2, 3, 4, 5]), &
+                    !                                                  self%inverse_vector_n(3, [1, 2, 3, 4, 5]))) &
+                    !                             / dot_product(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6), &
+                    !                                           wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), 6))
 
                     !> diff3
                     !> frequency domain
@@ -1833,12 +1834,12 @@ contains
                                                 - self%inverse_vector_n(1, 5) * wp_nonsens_eqa(1, 4))&
                                                 / jd_i(i)%wp_amp_freq(1, 2)
                     !> time domain
-                    self%inverse_vector(4, 6) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
-                                                            jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
-                                                            - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 2, 3, 4, 5]), &
-                                                                     self%inverse_vector_n(4, [1, 2, 3, 4, 5]))) &
-                                                / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
-                                                              wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6))
+                    ! self%inverse_vector(4, 6) = dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
+                    !                                         jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b  &
+                    !                                         - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 2, 3, 4, 5]), &
+                    !                                                  self%inverse_vector_n(4, [1, 2, 3, 4, 5]))) &
+                    !                             / dot_product(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6), &
+                    !                                           wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), 6))
 
                 case default
             end select
@@ -1872,7 +1873,6 @@ contains
             if (allocated(jd_i(i)%kbr1b_3degdiff)) deallocate(jd_i(i)%kbr1b_3degdiff, stat=err)
             if (err /= 0) print *, "jd(i)%kbr1b_3degdiff: Deallocation request denied"
         end do assign_jd_loop_n
-
 
         !> expectation
         expectation_loop: do i = 1, 6, 1
@@ -2264,7 +2264,7 @@ contains
         real(kind=wp)                                        :: intersatellite_range(size(self%kbr1b_both))
         character(len=14)                                    :: datenow
         character(len=1)                                     :: c_index_motiv
-        type(pyplot)                                         :: plt
+        !type(pyplot)                                         :: plt
         
         
         datenow = yyyymmddhhmmss()
@@ -2875,7 +2875,7 @@ contains
         CHARACTER(len=3000), ALLOCATABLE                 :: value(:)
 
         integer(kind=ip)                                 :: i, ios, err, line, col, fplerror, ind, ip_ndata
-        integer(kind=ip), ALLOCATABLE                    :: shape(:)
+        integer(kind=ip), ALLOCATABLE                    :: shape1(:)
         
         real(kind=wp)                                    :: reg, c_temp, s_temp
 
@@ -2896,11 +2896,11 @@ contains
             !> get key and its value
             key = Iterator%GetKey()
             !> checking the shape of a parameter
-            fplerror = iterator%GetShape(shape=shape)
+            fplerror = iterator%GetShape(shape1)
             !> allocate value
-            allocate(value(shape(1)), stat=err)
+            allocate(value(shape1(1)), stat=err)
             if (err /= 0) print *, "value(shape): Allocation request denied"
-            allocate(ifiles(shape(1)), stat=err)
+            allocate(ifiles(shape1(1)), stat=err)
             if (err /= 0) print *, "ifiles: Allocation request denied"
 
             check_flag: if (.not. any(flags == key)) then

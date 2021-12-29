@@ -5,7 +5,7 @@ module xml_module
     use logger_mod, only: logger_init, logger => master_logger
     use math_collection_module
     use strings
-    use M_strings, only: split
+    ! use M_strings, only: split
     use CalendarModule, only: dayOfYear
     use datetime_wrapper
     
@@ -214,9 +214,9 @@ contains
         integer(kind=ip), INTENT(  OUT)                         :: i_maneuver_time(8), i_mirror
         character(len=3000)                                     :: temp1, temp2, temp3, flag, c_date_man
         character(len=3000)                                     :: c_temp2, c_temp3, c_start_epoch, c_duration
-        character(len=3000)                                     :: c_vkbrptfilename(2)
+        character(len=3000)                                     :: c_vkbrptfilename(2), paths
         CHARACTER(len=:)   , ALLOCATABLE                        :: path(:)
-        character(len=3000), ALLOCATABLE                        :: paths(:), c_path(:), c_inputfiles(:)
+        character(len=3000), ALLOCATABLE                        :: c_path(:), c_inputfiles(:)
         CHARACTER(len=*), intent(  out)                         :: date, version
         character(len=3000)                                     :: result_path, vkbfile_name(2), config_path
         character(len=14)                                       :: datenow
@@ -232,6 +232,7 @@ contains
                                                                    c_roi1b_b, c_koe1b_a, c_koe1b_b, &
                                                                    c_tha1b_a, c_tha1b_b, c_date
         character(len=3000), dimension(1)                       :: c_vac1b_a, c_vac1b_b, c_gkb1b_a, c_gkb1b_b
+        character(len=3000), DIMENSION(8)                       :: c_date1
 
         !> datetime
         type(datetime_type)                                     :: start_epoch, man1, man2, man3, man4
@@ -292,19 +293,8 @@ contains
                 call split(temp1(right(1) + 1: left(2) - 1), path, delimiters=';', order='sequential', nulls='ignore')
                 !> make sure the dimension of maneuver start time is 4
                 if (size(path) /= 4_ip) error stop "The dimension of tag <ManneuverStartTime> is not four"
-                !> first date
-                c_date_man = path(1)
-                c_date(1, :) = c_date_man(1: 10)
-                i_days = 1_ip
                 !> start time from string to num
                 split_start_time_loop: do i = 1, 4, 1
-                    if (i > 1) then
-                        c_date_man = path(i)
-                        if (trim(c_date(i_days, 1)) /= c_date_man(1: 10)) then
-                            i_days = i_days + 1_ip
-                            c_date(i_days, :) = c_date_man(1: 10)
-                        end if
-                    end if
                     call date2num(path(i), i_date_num)
                     man1 = create_datetime(i_date_num(1), i_date_num(2), i_date_num(3), i_date_num(4), &
                                        i_date_num(5), i_date_num(6))
@@ -368,7 +358,6 @@ contains
                 end if
                 check_config_path_loop: do i = 1, 26, 1
                     paths = folder_walk_win(config_path, config_names(i))
-                    DEALLOCATE(paths)
                 end do check_config_path_loop
                 !> path array
                 fplerror = self%urlpaths%set(key='ConfigPath', value=[config_path])
@@ -449,86 +438,71 @@ contains
                     select case (flag)
                         case ('ACC1B-AFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_acc1b_a(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_acc1b_a(i_count_inputinfo, 1) = paths
                             i_count_acc1b_a = i_count_acc1b_a + 1_ip
                             if (i_count_inputinfo /= i_count_acc1b_a) error stop "Error dimension of tag <ACC1B-A>"
                         case ('ACC1B-BFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_acc1b_b(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_acc1b_b(i_count_inputinfo, 1) = paths
                             i_count_acc1b_b = i_count_acc1b_b + 1_ip
                             if (i_count_inputinfo /= i_count_acc1b_b) error stop "Error dimension of tag <ACC1B-B>"
                         case ('KOE1B-AFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_koe1b_a(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_koe1b_a(i_count_inputinfo, 1) = paths
                             i_count_koe1b_a = i_count_koe1b_a + 1_ip
                             if (i_count_inputinfo /= i_count_koe1b_a) error stop "Error dimension of tag <KOE1B-A>"
                         case ('KOE1B-BFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_koe1b_b(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_koe1b_b(i_count_inputinfo, 1) = paths
                             i_count_koe1b_b = i_count_koe1b_b + 1_ip
                             if (i_count_inputinfo /= i_count_koe1b_b) error stop "Error dimension of tag <KOE1B-B>"
                         case ('ROI1B-AFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_roi1b_a(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_roi1b_a(i_count_inputinfo, 1) = paths
                             i_count_roi1b_a = i_count_roi1b_a + 1_ip
                             if (i_count_inputinfo /= i_count_roi1b_a) error stop "Error dimension of tag <ROI1B-A>"
                         case ('ROI1B-BFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_roi1b_b(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_roi1b_b(i_count_inputinfo, 1) = paths
                             i_count_roi1b_b= i_count_roi1b_b + 1_ip
                             if (i_count_inputinfo /= i_count_roi1b_b) error stop "Error dimension of tag <ROI1B-B>"
                         case ('THA1B-AFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_tha1b_a(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_tha1b_a(i_count_inputinfo, 1) = paths
                             i_count_tha1b_a = i_count_tha1b_a + 1_ip
                             if (i_count_inputinfo /= i_count_tha1b_a) error stop "Error dimension of tag <THA1B-A>"
                         case ('THA1B-BFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_tha1b_b(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_tha1b_b(i_count_inputinfo, 1) = paths
                             i_count_tha1b_b = i_count_tha1b_b + 1_ip
                             if (i_count_inputinfo /= i_count_tha1b_b) error stop "Error dimension of tag <THA1B-B>"
                         case ('SCA1B-AFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_sca1b_a(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_sca1b_a(i_count_inputinfo, 1) = paths
                             i_count_sca1b_a = i_count_sca1b_a + 1_ip
                             if (i_count_inputinfo /= i_count_sca1b_a) error stop "Error dimension of tag <SCA1B-A>"
                         case ('SCA1B-BFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_sca1b_b(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_sca1b_b(i_count_inputinfo, 1) = paths
                             i_count_sca1b_b = i_count_sca1b_b + 1_ip
                             if (i_count_inputinfo /= i_count_sca1b_b) error stop "Error dimension of tag <SCA1B-B>"
                         case ('KBR1BFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_kbr1b_x(i_count_inputinfo, :) = paths
-                            DEALLOCATE(paths)
+                            c_kbr1b_x(i_count_inputinfo, 1) = paths
                             i_count_kbr1b_x = i_count_kbr1b_x + 1_ip
                             if (i_count_inputinfo /= i_count_kbr1b_x) error stop "Error dimension of tag <KBR1B-X>"
                         case ('GKB1B-AFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_gkb1b_a(:) = paths
-                            DEALLOCATE(paths)
+                            c_gkb1b_a(1) = paths
                         case ('GKB1B-BFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_gkb1b_b(:) = paths
-                            DEALLOCATE(paths)
+                            c_gkb1b_b(1) = paths
                         case ('VAC1B-AFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_vac1b_a(:) = paths
-                            DEALLOCATE(paths)
+                            c_vac1b_a(1) = paths
                         case ('VAC1B-BFile')
                             paths = folder_walk_win(content4tag(temp1), flag)
-                            c_vac1b_b(:) = paths
-                            DEALLOCATE(paths)
+                            c_vac1b_b(1) = paths
                         case ('/InputFileInfo')
                         case ('InputFileInfo')
                         case default
@@ -559,21 +533,20 @@ contains
                     !> folder walk
                     paths = folder_walk_win(temp1(right(1) + 1: left(2) - 1), flag)
                     !> extract the proper month for gsm file
-                    i_diff_date_gsm = 1000_ip
-                    i_index_gsm = 1_ip
-                    if (index(flag, "GSM") /= 0) then
-                        ex_proper_gsm: do i = 1_ip, size(paths), 1_ip
-                            c_gsm_dayofyear = paths(i)(index(paths(i), 'GSM', .true.) + 6: index(paths(i), "GSM", .true.) + 13)
-                            read(c_gsm_dayofyear, "(i7)") i_gsm_dayofyear
-                            if (abs(i_gsm_dayofyear - i_date_dayofyear) < i_diff_date_gsm) then
-                                i_index_gsm = i
-                                i_diff_date_gsm = abs(i_gsm_dayofyear - i_date_dayofyear)
-                            end if
-                        end do ex_proper_gsm
-                    end if
+                    ! i_diff_date_gsm = 1000_ip
+                    ! i_index_gsm = 1_ip
+                    ! if (index(flag, "GSM") /= 0) then
+                    !     ex_proper_gsm: do i = 1_ip, size(paths), 1_ip
+                    !         c_gsm_dayofyear = paths(i)(index(paths(i), 'GSM', .true.) + 6: index(paths(i), "GSM", .true.) + 13)
+                    !         read(c_gsm_dayofyear, "(i7)") i_gsm_dayofyear
+                    !         if (abs(i_gsm_dayofyear - i_date_dayofyear) < i_diff_date_gsm) then
+                    !             i_index_gsm = i
+                    !             i_diff_date_gsm = abs(i_gsm_dayofyear - i_date_dayofyear)
+                    !         end if
+                    !     end do ex_proper_gsm
+                    ! end if
                     !> path array
-                    fplerror = self%urlpaths%set(key=trim(flag), value=paths(i_index_gsm: i_index_gsm))
-                    DEALLOCATE(paths)
+                    fplerror = self%urlpaths%set(key=trim(flag), value=[paths])
                 end do read_in_ex
             end if
             !> OutputFileList
@@ -618,89 +591,112 @@ contains
             end if
         end do read_in_xml
 
+        !> date
+        do i = 1, size(i_maneuver_time), 1
+            man1 = start_epoch + create_timedelta(seconds=i_maneuver_time(i) - 18_ip + 28800_ip)
+            temp1 = man1%isoformat()
+            c_date1(i) = temp1(1: 10)
+        end do
+        c_date(1, 1) = c_date1(1)
+        i_days = 1_ip
+        do i = 2, size(i_maneuver_time), 1
+            if (trim(c_date1(i)) /= trim(c_date(i_days, 1))) then
+                i_days = i_days + 1_ip
+                c_date(i_days, 1) = c_date1(i)
+            end if
+        end do
+
         !> assign input files
-        if (i_days /= i_count_inputinfo) error stop "Maneuver days and the number of tag <InputFileInfo> are not compatible"
-        allocate(c_inputfiles(i_days), stat=err)
+        if (i_days /= i_count_inputinfo) error stop "The number of days and the number of tag <InputFileInfo> are not compatible"
+        allocate(c_inputfiles(i_count_inputinfo), stat=err)
         if (err /= 0) print *, "c_inputfiles: Allocation request denied"
-        do i = 1, 11, 1
+        do i = 1, 15, 1
             select case (i)
             case (1)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_a), 1
                         if (index(trim(c_acc1b_a(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_acc1b_a(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='ACC1B-AFile', value=c_inputfiles)
             case (2)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_acc1b_b(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_acc1b_b(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='ACC1B-BFile', value=c_inputfiles)
             case (3)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_koe1b_a(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_koe1b_a(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='KOE1B-AFile', value=c_inputfiles)
             case (4)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_koe1b_b(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_koe1b_b(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='KOE1B-BFile', value=c_inputfiles)
             case (5)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_roi1b_a(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_roi1b_a(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='ROI1B-AFile', value=c_inputfiles)
             case (6)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_roi1b_B(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_roi1b_B(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='ROI1B-BFile', value=c_inputfiles)
             case (7)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_tha1b_a(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_tha1b_a(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='THA1B-AFile', value=c_inputfiles)
             case (8)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_tha1b_B(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_tha1b_B(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='THA1B-BFile', value=c_inputfiles)
             case (9)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_sca1b_a(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_sca1b_a(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='SCA1B-AFile', value=c_inputfiles)
             case (10)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_sca1b_B(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_sca1b_B(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='SCA1B-BFile', value=c_inputfiles)
             case (11)
-                do j = 1, i_days, 1
+                do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
                         if (index(trim(c_kbr1b_x(k, 1)), trim(c_date(j, 1))) /= 0) c_inputfiles(j) = trim(c_kbr1b_x(k, 1))
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='KBR1BFile', value=c_inputfiles)
+            case (12)
+                fplerror = self%urlpaths%set(key='GKB1B-AFile', value=c_gkb1b_a)
+            case (13)
+                fplerror = self%urlpaths%set(key='GKB1B-BFile', value=c_gkb1b_b)
+            case (14)
+                fplerror = self%urlpaths%set(key='VAC1B-AFile', value=c_vac1b_a)
+            case (15)
+                fplerror = self%urlpaths%set(key='VAC1B-BFile', value=c_vac1b_b)
             end select
         end do
         if (allocated(c_inputfiles)) deallocate(c_inputfiles, stat=err)
@@ -723,6 +719,7 @@ contains
         
         fplerror = xml_o%urlpaths%set(key="VKB", value=vkbfile_name)
         fplerror = xml_o%urlpaths%set(key='VKBRPT', value=c_vkbrptfilename)
+        i_mirror = 0_ip
 
         ! call self%urlpaths%Print()
         ! call logger%info('xml_module', 'read in xml file successfully')

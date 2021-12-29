@@ -2,7 +2,6 @@ module io_file_module
     use num_kinds_module
     use random_integer_module
     use logger_mod, only: logger_init, logger => master_logger
-    use stringifor
     implicit none
     
     type, public:: io_file
@@ -23,8 +22,7 @@ contains
         integer(ip)                                     :: nheaders
         integer(ip)                                     :: nendofheader
         integer(ip)                                     :: ios, reason
-        character(len=100)                              :: temp
-        type(string)                                    :: astring
+        character(len=3000)                             :: temp
 
         open(unit=self%unit, file=self%name, iostat=ios, status="old", action="read")
         if ( ios /= 0 ) then
@@ -34,14 +32,13 @@ contains
 
         nheaders = 0_ip; nendofheader = 0_ip
         count_header: do 
-            read(self%unit, *, iostat=reason) temp
-            astring = temp
+            read(self%unit, "(a)", iostat=reason) temp
+            nheaders = nheaders + 1_ip
             if (reason < 0) exit
-            if (astring%is_number()) then
+            if (index(temp, "# End of YAML header") /= 0_ip) then
                 nendofheader = nendofheader + 1_ip
                 exit
             end if
-            nheaders = nheaders + 1_ip
         end do count_header
 
         !> check if this file contains the standard header end
