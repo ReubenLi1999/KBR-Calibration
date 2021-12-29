@@ -22,6 +22,29 @@ module math_collection_module
     
 contains
 
+    PURE FUNCTION cross(a, b) result(res)
+        real(kind=wp), DIMENSION(3) :: res
+        real(kind=wp), DIMENSION(3), INTENT(IN) :: a, b
+
+        res(1) = a(2) * b(3) - a(3) * b(2)
+        res(2) = a(3) * b(1) - a(1) * b(3)
+        res(3) = a(1) * b(2) - a(2) * b(1)
+    END FUNCTION cross
+
+    function losf2irf_rotm(wp_pos1, wp_pos2) result(wp_rotm)
+        !> input
+        real(kind=wp)                   , INTENT(IN   )                 :: wp_pos1(3), wp_pos2(3)
+        !> output
+        real(kind=wp)                                                   :: wp_rotm(3, 3)
+
+        !> local
+        
+        wp_rotm(:, 1) = (wp_pos2 - wp_pos1) / norm2(wp_pos1 - wp_pos2)
+        wp_rotm(:, 2) = cross(wp_rotm(:, 1), wp_pos1) / norm2(cross(wp_rotm(:, 1), wp_pos1))
+        wp_rotm(:, 3) = cross(wp_rotm(:, 1), wp_rotm(:, 2))
+
+    end function losf2irf_rotm
+
     subroutine date2num(c_date, ip_date)
         !> input 
         CHARACTER(len=*)                , INTENT(IN   )                 :: c_date

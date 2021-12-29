@@ -118,6 +118,19 @@ module phase_centre_vad
         !> the simulated antenna phase correction
         real(kind=wp)                                        :: range_pod
         !> the inter-satellite range calculated from POD data
+        real(kind=wp)                                        :: wp_rotm_c_losf2irf(3, 3)
+        !> rotation matrix from line-of-sight frame to inertial frame for the leading satellite
+        real(kind=wp)                                        :: wp_rotm_c_irf2losf(3, 3)
+        !> rotation matrix from inertial frame to line-of-sight frame for the leading satellite
+        real(kind=wp)                                        :: wp_rotm_d_losf2irf(3, 3)
+        !> rotation matrix from line-of-sight frame to inertial frame for the tracking satellite
+        real(kind=wp)                                        :: wp_rotm_d_irf2losf(3, 3)
+        !> rotation matrix from inertial frame to line-of-sight frame for the tracking satellite
+        real(kind=wp)                                        :: wp_eul_c_srf2losf(3)
+        !> euler angle from srf to losf
+        real(kind=wp)                                        :: wp_eul_d_srf2losf(3)
+        !> euler angle from losf to srf
+        real(kind=wp)                                        :: wp_multipath_error
     end type kbr1b_data
 
     type, public :: gps1b_data
@@ -1438,7 +1451,7 @@ contains
         self%inverse_vector(3, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff2, wp_normal_eqb_diff2)
         self%inverse_vector(4, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff3, wp_normal_eqb_diff3)
         self%inverse_vector_n = self%inverse_vector
-        print *, self%inverse_vector(:, 3)
+        print *, self%inverse_vector
         !>------------------------------------------------------------------------------------------
 
         !> second time -----------------------------------------------------------------------------
@@ -2256,19 +2269,33 @@ contains
         class(satellite)    , INTENT(INOUT)                  :: self
         integer(kind=ip)    , INTENT(IN   ), OPTIONAL        :: i_index_motiv
         type(hashtable)                                      :: q_scac, q_scad, q_gnia, q_gnib
-        integer(kind=ip)                                     :: i, ios, j, istat
+        integer(kind=ip)                                     :: i, ios, j, istat, fplerror
         integer(kind=ip)                                     :: tkbr, tscac, tscad, tgnia, tgnib
         real(kind=wp), ALLOCATABLE                           :: q_c(:), q_d(:), i_c(:), i_d(:)
         real(kind=wp)                                        :: range_res_ave
-        real(kind=wp)                                        :: temp
+        real(kind=wp)                                        :: temp, wp_multi_factor, wp_rotm(3, 3)
         real(kind=wp)                                        :: intersatellite_range(size(self%kbr1b_both))
         character(len=14)                                    :: datenow
         character(len=1)                                     :: c_index_motiv
+        character(len=:), ALLOCATABLE                        :: c_resultpath
+        character(len=3000)                                  :: c_multipath
+        type(io_file)                                        :: multi_file
         !type(pyplot)                                         :: plt
         
         
         datenow = yyyymmddhhmmss()
-
+        !> read multipath factor
+        fplerror = xml_i%urlpaths%GetAsString(key='ConfigPath', string=c_resultpath)
+        c_multipath = c_resultpath//'multipath.txt'
+        multi_file%name = c_multipath
+        call multi_file%file_obj_init()
+        open(unit=multi_file%unit, file=multi_file%name, iostat=ios, status="old", action="read")
+        if ( ios /= 0 ) stop "Error opening file name"
+        read(multi_file%unit, *)
+        read(multi_file%unit, *) wp_multi_factor
+        close(unit=multi_file%unit, iostat=ios)
+        if ( ios /= 0 ) stop "Error closing file unit multi_file%unit"
+        
         !> delete
         !open(unit=588, file='..//output//inertial_trajectory_2019-01-01_C_04.txt', iostat=ios, status="old", action="read")
         !if ( ios /= 0 ) stop "Error opening file name"
@@ -2430,7 +2457,35 @@ contains
             ! print *, self%kbr1b_both(i)%eq_a(1: 3)
 
             ! write(424, '(10f40.20)') self%kbr1b_both(i)%eq_a
+            !> euler angle
+            !> leading satellite
+            self%kbr1b_both(i)%wp_rotm_c_irf2losf = TRANSPOSE(losf2irf_rotm(self%kbr1b_both(i)%pos_i_lead, &
+                                                                            self%kbr1b_both(i)%pos_i_trac))
+            wp_rotm = matmul(self%kbr1b_both(i)%wp_rotm_c_irf2losf, self%kbr1b_both(i)%rotm_c_s2i)
+            self%kbr1b_both(i)%wp_eul_c_srf2losf(1) =  atan(wp_rotm(3, 2) / wp_rotm(3, 3))
+            self%kbr1b_both(i)%wp_eul_c_srf2losf(2) = -asin(wp_rotm(3, 1))
+            self%kbr1b_both(i)%wp_eul_c_srf2losf(3) =  atan(wp_rotm(2, 1) / wp_rotm(1, 1))
+            !> tracking satellite
+            self%kbr1b_both(i)%wp_rotm_d_irf2losf = TRANSPOSE(losf2irf_rotm(self%kbr1b_both(i)%pos_i_trac, &
+                                                                            self%kbr1b_both(i)%pos_i_lead))
+            wp_rotm = matmul(self%kbr1b_both(i)%wp_rotm_d_irf2losf, self%kbr1b_both(i)%rotm_d_s2i)
+            self%kbr1b_both(i)%wp_eul_d_srf2losf(1) =  atan(wp_rotm(3, 2) / wp_rotm(3, 3))
+            self%kbr1b_both(i)%wp_eul_d_srf2losf(2) = -asin(wp_rotm(3, 1))
+            self%kbr1b_both(i)%wp_eul_d_srf2losf(3) =  atan(wp_rotm(2, 1) / wp_rotm(1, 1))
         end do create_eq
+        
+        !> multipath error
+        select case (i_index_motiv)
+            case (1)
+                self%kbr1b_both%wp_multipath_error = wp_multi_factor/1000.0_wp * self%kbr1b_both%wp_eul_c_srf2losf(3)
+            case (2)
+                self%kbr1b_both%wp_multipath_error = wp_multi_factor/1000.0_wp * self%kbr1b_both%wp_eul_c_srf2losf(2)
+            case (3)
+                self%kbr1b_both%wp_multipath_error = wp_multi_factor/1000.0_wp * self%kbr1b_both%wp_eul_d_srf2losf(3)
+            case (4)
+                self%kbr1b_both%wp_multipath_error = wp_multi_factor/1000.0_wp * self%kbr1b_both%wp_eul_d_srf2losf(2)
+        end select
+
         !> -----------------------------------------------------------------------------------------
         ! close(unit=424, iostat=ios)
         ! if ( ios /= 0 ) stop "Error closing file unit 424"
@@ -2440,7 +2495,7 @@ contains
         ! call self%simu_ant_phase_corr()
 
         !> assign array b in Ax=b
-        self%kbr1b_both%eq_b = self%kbr1b_both%range_resi
+        self%kbr1b_both%eq_b = self%kbr1b_both%range_resi - self%kbr1b_both%wp_multipath_error
 
 
         !>------------------------------------------------------------------------------------------

@@ -221,7 +221,7 @@ contains
         character(len=3000)                                     :: result_path, vkbfile_name(2), config_path
         character(len=14)                                       :: datenow
         character(len=1)                                        :: sep
-        character(len=3000)                                     :: config_names(27)
+        character(len=3000)                                     :: config_names(28)
         character(len=3000)                                     :: gsm_file
         character(len=7)                                        :: c_gsm_dayofyear
         character(len=2)                                        :: c_date_d, c_date_m
@@ -248,7 +248,7 @@ contains
             '2011JIYI.txt', '2012JIYI.txt', '2013JIYI.txt', '2014JIYI.txt', '2015JIYI.txt', &
             '2016JIYI.txt', '2017JIYI.txt', '2018JIYI.txt', '2019JIYI.txt', '2020JIYI.txt', &
             "coeff_high_pass_0.004_100db.fcf", "jiyi.dat", "JPLEPH", "k20.txt", "k21.txt", "k22.txt", &
-            'coeff_band_pass_0.001_0.009_ls.fcf' &
+            'coeff_band_pass_0.001_0.009_ls.fcf', "multipath.txt" &
         ]
 
         !> datetime
