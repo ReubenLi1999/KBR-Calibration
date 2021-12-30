@@ -1272,15 +1272,15 @@ contains
 
             !> normal equation for diff-2 and diff-3 in the time domain
             wp_normal_eqa_diff2 = wp_normal_eqa_diff2 + matmul(TRANSPOSE(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6])), &
-                                                               wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6]))
+                                                                         wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6]))
             wp_normal_eqb_diff2 = wp_normal_eqb_diff2 + matmul(TRANSPOSE(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [2, 3, 5, 6])), &
                                                                jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b  &
-                                                      - MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 4]), [self%initial_vector(1), self%initial_vector(4)]))
+                                                      -           MATMUL(wp_eqa_diff2(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b), [1, 4]), [self%initial_vector(1), self%initial_vector(4)]))
             wp_normal_eqa_diff3 = wp_normal_eqa_diff3 + matmul(TRANSPOSE(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6])), &
-                                                               wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6]))
+                                                                         wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6]))
             wp_normal_eqb_diff3 = wp_normal_eqb_diff3 + matmul(TRANSPOSE(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [2, 3, 5, 6])), &
                                                                jd_i(i)%kbr1b_3degdiff(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b))%eq_b &
-                                                      - MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 4]), [self%initial_vector(1), self%initial_vector(4)]))
+                                                      -           MATMUL(wp_eqa_diff3(nfilter: size(jd_i(i)%kbr1b_3degdiff%eq_b), [1, 4]), [self%initial_vector(1), self%initial_vector(4)]))
             
             !> identify the amplitude of the Fourier component at the maneuver frequency and doubled maneuver frequency
             call jd_i(i)%amp_identification(jd_i(i)%kbr1b_2degdiff(nfilter: size(jd_i(i)%kbr1b_2degdiff%eq_b))%eq_b, &
