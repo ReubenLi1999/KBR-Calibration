@@ -18,6 +18,12 @@ module math_collection_module
     !>          in the future.
     !>----------------------------------------------------------------------------------------------
     
+    interface sort
+        module procedure sort_wp
+        module procedure sort_ip
+    end interface sort
+
+
     real(kind=wp), parameter                         :: pi = atan(1.0_wp) * 4.0_wp
     
 contains
@@ -195,7 +201,7 @@ contains
         
     end function std
 
-    function sort(wp_input) result(wp_output)
+    function sort_wp(wp_input) result(wp_output)
         !> input
         real(kind=wp)                   , INTENT(IN   )                 :: wp_input(:)
         !> output
@@ -217,7 +223,32 @@ contains
             end do
         end do
         
-    end function sort
+    end function sort_wp
+
+    function sort_ip(ip_input) result(ip_output)
+        !> input
+        INTEGER(kind=ip)                   , INTENT(IN   )              :: ip_input(:)
+        !> output
+        INTEGER(kind=ip)                                                :: ip_output(size(ip_input))
+        
+        !> temp
+        INTEGER(kind=ip)                                                :: ip_temp
+        INTEGER(kind=ip)                                                :: ip_temp_array(size(ip_input))
+        integer(kind=ip)                                                :: ip_j, ip_k
+        
+        ip_temp_array = ip_input
+        do ip_j = 1, ubound(ip_temp_array, 1) - 1
+            do ip_k = ip_j + 1, ubound(ip_temp_array, 1)
+                if (ip_temp_array(ip_j) > ip_temp_array(ip_k)) then
+                    ip_temp = ip_temp_array(ip_k)
+                    ip_temp_array(ip_k) = ip_temp_array(ip_j)
+                    ip_temp_array(ip_j) = ip_temp
+                end if
+            end do
+        end do
+        ip_output = ip_temp_array
+        
+    end function sort_ip
 
     function expec_without_outlier(wp_input) result(wp_output)
         !> input

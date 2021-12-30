@@ -1451,7 +1451,6 @@ contains
         self%inverse_vector(3, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff2, wp_normal_eqb_diff2)
         self%inverse_vector(4, [2, 3, 5, 6]) = ls_solver(wp_normal_eqa_diff3, wp_normal_eqb_diff3)
         self%inverse_vector_n = self%inverse_vector
-        print *, self%inverse_vector
         !>------------------------------------------------------------------------------------------
 
         !> second time -----------------------------------------------------------------------------
@@ -3630,7 +3629,7 @@ contains
         
         !> using the arithmetic mean of phase centres for K/Ka band microwave as the equivalent phase centre
         assign_pcv_loop: do i = 1, 6, 1
-            self%initial_vector(i) = (self%initial_vector_k(i) + self%initial_vector_ka(i)) / 2.0_wp
+            self%initial_vector(i) = 16.0_wp / 7.0_wp * self%initial_vector_ka(i) - 9.0_wp / 7.0_wp * self%initial_vector_k(i)
         end do assign_pcv_loop
 
     end subroutine initialise

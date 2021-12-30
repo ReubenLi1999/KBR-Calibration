@@ -206,7 +206,7 @@ contains
         integer(kind=ip)                                        :: i_date_d, i_date_m, i_date_y
         integer(kind=ip)                                        :: i_start_epoch, i_duration
         integer(kind=ip)                                        :: i_date_num(6)
-        integer(kind=ip)                                        :: i_days, j
+        integer(kind=ip)                                        :: i_days, j, i_maneuver_time1(8)
         integer(kind=ip)                                        :: i_count_inputinfo
         integer(kind=ip)                                        :: i_count_sca1b_a, i_count_sca1b_b, i_count_tha1b_a, i_count_tha1b_b, &
                                                                    i_count_roi1b_a, i_count_roi1b_b, i_count_koe1b_a, i_count_koe1b_b, &
@@ -292,6 +292,7 @@ contains
                 !> start time
                 call split(temp1(right(1) + 1: left(2) - 1), path, delimiters=';', order='sequential', nulls='ignore')
                 !> make sure the dimension of maneuver start time is 4
+                c_date1([1, 3, 5, 7]) = path
                 if (size(path) /= 4_ip) error stop "The dimension of tag <ManneuverStartTime> is not four"
                 !> start time from string to num
                 split_start_time_loop: do i = 1, 4, 1
@@ -303,12 +304,16 @@ contains
                     select case (i)
                         case (1)
                             i_maneuver_time(3) = i_start_epoch + 18_ip - 28800_ip
+                            i_maneuver_time1(1) = i_start_epoch + 18_ip - 28800_ip
                         case (2)
                             i_maneuver_time(7) = i_start_epoch + 18_ip - 28800_ip
+                            i_maneuver_time1(3) = i_start_epoch + 18_ip - 28800_ip
                         case (3)
                             i_maneuver_time(1) = i_start_epoch + 18_ip - 28800_ip
+                            i_maneuver_time1(5) = i_start_epoch + 18_ip - 28800_ip
                         case (4)
                             i_maneuver_time(5) = i_start_epoch + 18_ip - 28800_ip
+                            i_maneuver_time1(7) = i_start_epoch + 18_ip - 28800_ip
                         case default
                             error stop "The dimension of tag <ManneuverStartTime> is not four"
                     end select
@@ -331,12 +336,16 @@ contains
                     select case (i)
                         case (1)
                             i_maneuver_time(4) = i_duration + i_maneuver_time(3) - 1_ip
+                            i_maneuver_time1(2) = i_duration + i_maneuver_time1(1) - 1_ip
                         case (2)
                             i_maneuver_time(8) = i_duration + i_maneuver_time(7) - 1_ip
+                            i_maneuver_time1(4) = i_duration + i_maneuver_time1(3) - 1_ip
                         case (3)
                             i_maneuver_time(2) = i_duration + i_maneuver_time(1) - 1_ip
+                            i_maneuver_time1(6) = i_duration + i_maneuver_time1(5) - 1_ip
                         case (4)
                             i_maneuver_time(6) = i_duration + i_maneuver_time(5) - 1_ip
+                            i_maneuver_time1(8) = i_duration + i_maneuver_time1(7) - 1_ip
                         case default
                             error stop "The dimension of tag <ManneuverTimeLength> is not four"
                     end select
@@ -592,21 +601,28 @@ contains
         end do read_in_xml
 
         !> date
-        do i = 1, size(i_maneuver_time), 1
-            man1 = start_epoch + create_timedelta(seconds=i_maneuver_time(i) - 18_ip + 28800_ip)
+        i_maneuver_time1 = sort(i_maneuver_time)
+        if (i_maneuver_time1(3) < i_maneuver_time1(1) .or. &
+            i_maneuver_time1(5) < i_maneuver_time1(1) .or. &
+            i_maneuver_time1(7) < i_maneuver_time1(1) .or. &
+            i_maneuver_time1(5) < i_maneuver_time1(3) .or. &
+            i_maneuver_time1(7) < i_maneuver_time1(3) .or. &
+            i_maneuver_time1(7) < i_maneuver_time1(5)) error stop "Wrong CalibrationStartTime"
+        do i = 1, size(i_maneuver_time1), 1
+            man1 = start_epoch + create_timedelta(seconds=i_maneuver_time1(i) - 18_ip + 28800_ip)
             temp1 = man1%isoformat()
             c_date1(i) = temp1(1: 10)
         end do
         c_date(1, 1) = c_date1(1)
         i_days = 1_ip
-        do i = 2, size(i_maneuver_time), 1
+        do i = 2, size(i_maneuver_time1), 1
             if (trim(c_date1(i)) /= trim(c_date(i_days, 1))) then
                 i_days = i_days + 1_ip
                 c_date(i_days, 1) = c_date1(i)
             end if
         end do
 
-        !> assign input files
+        !> assign input file
         if (i_days /= i_count_inputinfo) error stop "The number of days and the number of tag <InputFileInfo> are not compatible"
         allocate(c_inputfiles(i_count_inputinfo), stat=err)
         if (err /= 0) print *, "c_inputfiles: Allocation request denied"
@@ -619,6 +635,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='ACC1B-AFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (2)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -626,6 +643,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='ACC1B-BFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (3)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -633,6 +651,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='KOE1B-AFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (4)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -640,6 +659,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='KOE1B-BFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (5)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -647,6 +667,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='ROI1B-AFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (6)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -654,6 +675,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='ROI1B-BFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (7)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -661,6 +683,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='THA1B-AFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (8)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -668,6 +691,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='THA1B-BFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (9)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -675,6 +699,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='SCA1B-AFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (10)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -682,6 +707,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='SCA1B-BFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (11)
                 do j = 1, i_count_inputinfo, 1
                     do k = 1, size(c_acc1b_b), 1
@@ -689,6 +715,7 @@ contains
                     end do
                 end do
                 fplerror = self%urlpaths%set(key='KBR1BFile', value=c_inputfiles)
+                c_inputfiles = ['', '', '', '']
             case (12)
                 fplerror = self%urlpaths%set(key='GKB1B-AFile', value=c_gkb1b_a)
             case (13)
