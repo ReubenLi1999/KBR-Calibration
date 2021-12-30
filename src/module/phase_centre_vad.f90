@@ -570,7 +570,12 @@ contains
     subroutine assert_maneuver(self, i_maneuver_time)
         class(satellite)                , intent(inout)      :: self
 
-        integer(kind=ip), DIMENSION(:)  , INTENT(IN   )      :: i_maneuver_time
+        integer(kind=ip), DIMENSION(:)  , INTENT(INout)      :: i_maneuver_time
+
+        type(hashtable)                                      :: q_scac
+        integer(kind=ip)                                     :: i
+        integer(kind=ip)                                     :: tscac, tman, i_mantime(8)
+        real(kind=wp), ALLOCATABLE                           :: wp_man(:)
 
         if (any(i_maneuver_time < self%sca1b_lead(1)%gpst_sca1b)) then
             call logger%error('phase_centre_vad', "Maneuver time error")
@@ -583,6 +588,29 @@ contains
             call xml_o%xml2file(1, "Maneuver time error")
             stop
         end if
+
+        !> assign maneuver index
+        call q_scac%init(nitems=size(self%sca1b_lead))
+        
+        put_sca_value: do i = 1, size(self%sca1b_lead), 1
+            tscac = int(self%sca1b_lead(i)%gpst_sca1b)
+            call q_scac%put(key=tscac, rvals=[real(i, wp)])
+        end do put_sca_value
+
+        assign_man: do i = 1, size(i_maneuver_time), 1
+
+            !> quaternion to rotation matrix section
+            tman = i_maneuver_time(i)
+            if (q_scac%has_key(tman)) then
+                call q_scac%get(key=tman, rvals=wp_man)
+                i_mantime(i) = ceiling(wp_man(1))
+            else
+                call logger%error('phase_centre_vad', 'Maneuver time error')
+                call xml_o%xml2file(1, 'Maneuver time error')
+                stop
+            end if
+        end do assign_man
+        i_maneuver_time = i_mantime
 
     end subroutine assert_maneuver
 
@@ -2496,7 +2524,6 @@ contains
         !> assign array b in Ax=b
         self%kbr1b_both%eq_b = self%kbr1b_both%range_resi - self%kbr1b_both%wp_multipath_error
 
-
         !>------------------------------------------------------------------------------------------
         !> output eq_b
         ! open(unit=424, file='..//temp//eq_b_'//datenow//'.txt', iostat=ios, status="unknown", position="append")
@@ -3050,6 +3077,7 @@ contains
                                 call xml_o%xml2file(1, "self%kbr1b_both: Allocation request denied")
                                 stop
                             end if
+                            ip_ndata = 0_ip
                             !> read in kbr header
                             read_kbr_header: do i = 1, ifile%nheader, 1
                                 read(ifile%unit, *) temp
@@ -3060,6 +3088,7 @@ contains
                                                     self%kbr1b_both(i)%range_rate, self%kbr1b_both(i)%range_accl, &
                                                     self%kbr1b_both(i)%iono_corr,  self%kbr1b_both(i)%tof_range, &
                                                     self%kbr1b_both(i)%tof_rate,   self%kbr1b_both(i)%tof_accl
+                                ip_ndata = ip_ndata + 1_ip
                                 if (i > 2_ip) then
                                     if (.not. isequal(self%kbr1b_both(i)%gpst_kbr1b - self%kbr1b_both(i - 1)%gpst_kbr1b, &
                                                       self%kbr1b_both(i - 1)%gpst_kbr1b - self%kbr1b_both(i - 2)%gpst_kbr1b)) then
@@ -3075,12 +3104,13 @@ contains
                                 read(ifile%unit, *) temp
                             end do read_kbr_header_n
                             !> read in kbr data
-                            read_kbr_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                            read_kbr_data_n: do i = 1+ip_ndata, ifile%nrow-ifile%nheader+ip_ndata, 1
                                 read(ifile%unit, *) self%kbr1b_both(i)%gpst_kbr1b, temp, self%kbr1b_both(i)%range, &
                                                     self%kbr1b_both(i)%range_rate, self%kbr1b_both(i)%range_accl, &
                                                     self%kbr1b_both(i)%iono_corr,  self%kbr1b_both(i)%tof_range, &
                                                     self%kbr1b_both(i)%tof_rate,   self%kbr1b_both(i)%tof_accl
-                                if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
+                                ip_ndata = ip_ndata + 1_ip
+                                if (i > 2_ip+ip_ndata) then
                                     if (.not. isequal(self%kbr1b_both(i)%gpst_kbr1b - self%kbr1b_both(i - 1)%gpst_kbr1b, &
                                                       self%kbr1b_both(i - 1)%gpst_kbr1b - self%kbr1b_both(i - 2)%gpst_kbr1b)) then
                                         call logger%error("phase_centre_vad", "Time stamp gap occurred in KBR1B file "//trim(real2str(self%kbr1b_both(i)%gpst_kbr1b)))
@@ -3089,12 +3119,6 @@ contains
                                     end if
                                 end if
                             end do read_kbr_data_n
-                            
-                            sub_man_loop: do i = 1, size(i_maneuver_time), 1
-                                if (i_maneuver_time(i) >= self%kbr1b_both(1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader)%gpst_kbr1b) then
-                                    i_maneuver_time(i) = i_maneuver_time(i) - self%kbr1b_both(1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader)%gpst_kbr1b + 1_ip + self%kbr1b_both(ifiles(ind-1)%nrow-ifiles(ind-1)%nheader)%gpst_kbr1b
-                                end if
-                            end do sub_man_loop
                         end if
                         call logger%info('phase_centre_vad', 'read in KBR1B_X data successfully')
                     case ('ROI1B-AFile')
@@ -3113,6 +3137,7 @@ contains
                                     stop
                                 end if
                             end if
+                            ip_ndata = 0_ip
                             !> read in gps1b_lead header
                             read_gni_lead_header: do i = 1, ifile%nheader, 1
                                 read(ifile%unit, *) temp
@@ -3122,6 +3147,7 @@ contains
                                 read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_lead(i)%pos_i, reg, reg, reg,&
                                                     self%gps1b_lead(i)%vel_i
+                                ip_ndata = ip_ndata + 1_ip
                                 if (i > 2_ip) then
                                     if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
                                                       self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
@@ -3137,11 +3163,12 @@ contains
                                 read(ifile%unit, *) temp
                             end do read_gni_lead_header_n
                             !> read in gps1b_lead data
-                            read_gni_lead_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                            read_gni_lead_data_n: do i = 1+ip_ndata, ifile%nrow-ifile%nheader+ip_ndata, 1
                                 read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_lead(i)%pos_i, reg, reg, reg,&
                                                     self%gps1b_lead(i)%vel_i
-                                if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
+                                ip_ndata = ip_ndata + 1_ip
+                                if (i > 2_ip+ip_ndata) then
                                     if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
                                                       self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
                                         call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the leading satellite")
@@ -3168,6 +3195,7 @@ contains
                                     stop
                                 end if
                             end if
+                            ip_ndata = 0_ip
                             !> read in gps1b_trac header
                             read_gni_trac_header: do i = 1, ifile%nheader, 1
                                 read(ifile%unit, *) temp
@@ -3177,6 +3205,7 @@ contains
                                 read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_trac(i)%pos_i, reg, reg, reg, &
                                                     self%gps1b_trac(i)%vel_i
+                                ip_ndata = ip_ndata + 1_ip
                                 if (i > 2_ip) then
                                     if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
                                                       self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
@@ -3192,11 +3221,12 @@ contains
                                 read(ifile%unit, *) temp
                             end do read_gni_trac_header_n
                             !> read in gps1b_trac data
-                            read_gni_trac_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                            read_gni_trac_data_n: do i = 1+ip_ndata, ifile%nrow-ifile%nheader+ip_ndata, 1
                                 read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_trac(i)%pos_i, reg, reg, reg, &
                                                     self%gps1b_trac(i)%vel_i
-                                if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
+                                ip_ndata = ip_ndata + 1_ip
+                                if (i > 2_ip+ip_ndata) then
                                     if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
                                                       self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
                                         call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the tracking satellite")
@@ -3224,6 +3254,7 @@ contains
                                     stop
                                 end if
                             end if
+                            ip_ndata = 0_ip
                             !> read in gps1b_lead header
                             read_gnv_lead_header: do i = 1, ifile%nheader, 1
                                 read(ifile%unit, *) temp
@@ -3233,6 +3264,7 @@ contains
                                 read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_lead(i)%pos_e, reg, reg, reg,&
                                                     self%gps1b_lead(i)%vel_e
+                                ip_ndata = ip_ndata + 1_ip
                                 if (i > 2_ip) then
                                     if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
                                                       self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
@@ -3248,11 +3280,12 @@ contains
                                 read(ifile%unit, *) temp
                             end do read_gnv_lead_header_n
                             !> read in gps1b_lead data
-                            read_gnv_lead_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                            read_gnv_lead_data_n: do i = 1+ip_ndata, ifile%nrow-ifile%nheader+ip_ndata, 1
                                 read(ifile%unit, *) self%gps1b_lead(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_lead(i)%pos_e, reg, reg, reg,&
                                                     self%gps1b_lead(i)%vel_e
-                                if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
+                                ip_ndata = ip_ndata + 1_ip
+                                if (i > 2_ip+ip_ndata) then
                                     if (.not. isequal(self%gps1b_lead(i)%gpst_gps1b - self%gps1b_lead(i - 1)%gpst_gps1b, &
                                                       self%gps1b_lead(i - 1)%gpst_gps1b - self%gps1b_lead(i - 2)%gpst_gps1b)) then
                                         call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the leading satellite")
@@ -3279,6 +3312,7 @@ contains
                                     stop
                                 end if
                             end if
+                            ip_ndata = 0_ip
                             !> read in gps1b_trac header
                             read_gnv_trac_header: do i = 1, ifile%nheader, 1
                                 read(ifile%unit, *) temp
@@ -3288,6 +3322,7 @@ contains
                                 read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_trac(i)%pos_e, reg, reg, reg, &
                                                     self%gps1b_trac(i)%vel_e
+                                ip_ndata = ip_ndata + 1_ip
                                 if (i > 2_ip) then
                                     if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
                                                       self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
@@ -3303,11 +3338,12 @@ contains
                                 read(ifile%unit, *) temp
                             end do read_gnv_trac_header_n
                             !> read in gps1b_trac data
-                            read_gnv_trac_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                            read_gnv_trac_data_n: do i = 1+ip_ndata, ifile%nrow-ifile%nheader+ip_ndata, 1
                                 read(ifile%unit, *) self%gps1b_trac(i)%gpst_gps1b, temp, temp, temp, &
                                                     self%gps1b_trac(i)%pos_e, reg, reg, reg, &
                                                     self%gps1b_trac(i)%vel_e
-                                if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
+                                ip_ndata = ip_ndata + 1_ip
+                                if (i > 2_ip+ip_ndata) then
                                     if (.not. isequal(self%gps1b_trac(i)%gpst_gps1b - self%gps1b_trac(i - 1)%gpst_gps1b, &
                                                       self%gps1b_trac(i - 1)%gpst_gps1b - self%gps1b_trac(i - 2)%gpst_gps1b)) then
                                         call logger%error("phase_centre_vad", "Time stamp gap occurred in ROI1B file for the tracking satellite")
@@ -3333,6 +3369,7 @@ contains
                                 call xml_o%xml2file(1, "self%sca1b_lead: Allocation request denied")
                                 stop
                             end if
+                            ip_ndata = 0_ip
                             !> read in sca1b_lead header
                             read_sca_lead_header: do i = 1, ifile%nheader, 1
                                 read(ifile%unit, *) temp
@@ -3341,6 +3378,7 @@ contains
                             read_sca_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
                                 read(ifile%unit, *) self%sca1b_lead(i)%gpst_sca1b, temp, temp, reg, &
                                                     self%sca1b_lead(i)%quaternion
+                                ip_ndata = ip_ndata + 1_ip
                                 !> convert quaternion to rotation matrix
                                 self%sca1b_lead(i)%rotm_i2s = q2m(self%sca1b_lead(i)%quaternion)
                                 self%sca1b_lead(i)%rotm_s2i = TRANSPOSE(self%sca1b_lead(i)%rotm_i2s)
@@ -3360,14 +3398,15 @@ contains
                                 read(ifile%unit, *) temp
                             end do read_sca_lead_header_n
                             !> read in sca1b_lead data
-                            read_sca_lead_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                            read_sca_lead_data_n: do i = 1+ip_ndata, ifile%nrow-ifile%nheader+ip_ndata, 1
                                 read(ifile%unit, *) self%sca1b_lead(i)%gpst_sca1b, temp, temp, reg, &
                                                     self%sca1b_lead(i)%quaternion
+                                ip_ndata = ip_ndata + 1_ip
                                 !> convert quaternion to rotation matrix
                                 self%sca1b_lead(i)%rotm_i2s = q2m(self%sca1b_lead(i)%quaternion)
                                 self%sca1b_lead(i)%rotm_s2i = TRANSPOSE(self%sca1b_lead(i)%rotm_i2s)
                                 !> check if the time stamp gap exists
-                                if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
+                                if (i > 2_ip+ip_ndata) then
                                     if (.not. isequal(self%sca1b_lead(i)%gpst_sca1b - self%sca1b_lead(i - 1)%gpst_sca1b, &
                                                       self%sca1b_lead(i - 1)%gpst_sca1b - self%sca1b_lead(i - 2)%gpst_sca1b)) then
                                         call logger%error("phase_centre_vad", "Time stamp gap occurred in SCA1B file for the leading satellite")
@@ -3392,6 +3431,7 @@ contains
                                 call xml_o%xml2file(1, "self%sca1b_trac: Allocation request denied")
                                 stop
                             end if
+                            ip_ndata = 0_ip
                             !> read in sca1b_trac header
                             read_sca_trac_header: do i = 1, ifile%nheader, 1
                                 read(ifile%unit, *) temp
@@ -3400,6 +3440,7 @@ contains
                             read_sca_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
                                 read(ifile%unit, *) self%sca1b_trac(i)%gpst_sca1b, temp, temp, reg, &
                                                     self%sca1b_trac(i)%quaternion
+                                ip_ndata = ip_ndata + 1_ip
                                 !> convert quaternion to rotation matrix
                                 self%sca1b_trac(i)%rotm_i2s = q2m(self%sca1b_trac(i)%quaternion)
                                 self%sca1b_trac(i)%rotm_s2i = TRANSPOSE(self%sca1b_trac(i)%rotm_i2s)
@@ -3419,14 +3460,15 @@ contains
                                 read(ifile%unit, *) temp
                             end do read_sca_trac_header_n
                             !> read in sca1b_trac data
-                            read_sca_trac_data_n: do i = 1+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                            read_sca_trac_data_n: do i = 1+ip_ndata, ifile%nrow-ifile%nheader+ip_ndata, 1
                                 read(ifile%unit, *) self%sca1b_trac(i)%gpst_sca1b, temp, temp, reg, &
                                                     self%sca1b_trac(i)%quaternion
+                                ip_ndata = ip_ndata + 1_ip
                                 !> convert quaternion to rotation matrix
                                 self%sca1b_trac(i)%rotm_i2s = q2m(self%sca1b_trac(i)%quaternion)
                                 self%sca1b_trac(i)%rotm_s2i = TRANSPOSE(self%sca1b_trac(i)%rotm_i2s)
                                 !> check if the time stamp gap exists
-                                if (i > 2_ip+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader) then
+                                if (i > 2_ip+ip_ndata) then
                                     if (.not. isequal(self%sca1b_trac(i)%gpst_sca1b - self%sca1b_trac(i - 1)%gpst_sca1b, &
                                                       self%sca1b_trac(i - 1)%gpst_sca1b - self%sca1b_trac(i - 2)%gpst_sca1b)) then
                                         call logger%error("phase_centre_vad", "Time stamp gap occurred in SCA1B file for the tracking satellite")
@@ -3451,6 +3493,7 @@ contains
                                 call xml_o%xml2file(1, "self%acc1b_lead: Allocation request denied")
                                 stop
                             end if
+                            ip_ndata = 0_ip
                             !> read in acc1b_lead header
                             read_acc_lead_header: do i = 1, ifile%nheader, 1
                                 read(ifile%unit, *) temp
@@ -3459,6 +3502,7 @@ contains
                             read_acc_lead_data: do i = 1, ifile%nrow - ifile%nheader, 1
                                 read(ifile%unit, *) self%acc1b_lead(i)%gpst_acc1b, temp, temp, &
                                                     self%acc1b_lead(i)%non_grav_acc
+                                ip_ndata = ip_ndata + 1_ip
                             end do read_acc_lead_data
                         else
                             !> read in acc1b_lead header
@@ -3466,9 +3510,10 @@ contains
                                 read(ifile%unit, *) temp
                             end do read_acc_lead_header_n
                             !> read in acc1b_lead data
-                            read_acc_lead_data_n: do i = ifiles(ind-1)%nrow-ifiles(ind-1)%nheader+1, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                            read_acc_lead_data_n: do i = ip_ndata+1, ifile%nrow-ifile%nheader+ip_ndata, 1
                                 read(ifile%unit, *) self%acc1b_lead(i)%gpst_acc1b, temp, temp, &
                                                     self%acc1b_lead(i)%non_grav_acc
+                                ip_ndata = ip_ndata + 1_ip
                             end do read_acc_lead_data_n
                         end if
                         
@@ -3487,6 +3532,7 @@ contains
                                 call xml_o%xml2file(1, "self%acc1b_trac: Allocation request denied")
                                 stop
                             end if
+                            ip_ndata = 0_ip
                             !> read in acc1b_trac header
                             read_acc_trac_header: do i = 1, ifile%nheader, 1
                                 read(ifile%unit, *) temp
@@ -3495,6 +3541,7 @@ contains
                             read_acc_trac_data: do i = 1, ifile%nrow - ifile%nheader, 1
                                 read(ifile%unit, *) self%acc1b_trac(i)%gpst_acc1b, temp, temp, &
                                                     self%acc1b_trac(i)%non_grav_acc
+                                ip_ndata = ip_ndata + 1_ip
                             end do read_acc_trac_data
                         else
                             !> read in acc1b_trac header
@@ -3502,9 +3549,10 @@ contains
                                 read(ifile%unit, *) temp
                             end do read_acc_trac_header_n
                             !> read in acc1b_trac data
-                            read_acc_trac_data_n: do i = ifiles(ind-1)%nrow-ifiles(ind-1)%nheader+1, ifile%nrow-ifile%nheader+ifiles(ind-1)%nrow-ifiles(ind-1)%nheader, 1
+                            read_acc_trac_data_n: do i = ip_ndata+1, ifile%nrow-ifile%nheader+ip_ndata, 1
                                 read(ifile%unit, *) self%acc1b_trac(i)%gpst_acc1b, temp, temp, &
                                                     self%acc1b_trac(i)%non_grav_acc
+                                ip_ndata = ip_ndata + 1_ip
                             end do read_acc_trac_data_n
                         end if
                         call logger%info('phase_centre_vad', 'read in ACC1B_B data successfully')

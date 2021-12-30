@@ -623,8 +623,8 @@ contains
         end do
 
         !> assign input file
-        if (i_days /= i_count_inputinfo) error stop "The number of days and the number of tag <InputFileInfo> are not compatible"
-        allocate(c_inputfiles(i_count_inputinfo), stat=err)
+        ! if (i_days /= i_count_inputinfo) error stop "The number of days and the number of tag <InputFileInfo> are not compatible"
+        allocate(c_inputfiles(i_days), stat=err)
         if (err /= 0) print *, "c_inputfiles: Allocation request denied"
         do i = 1, 15, 1
             select case (i)

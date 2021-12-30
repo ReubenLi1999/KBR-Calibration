@@ -1,12 +1,9 @@
-!! Copyright (c) 2018 William Matthew Peterson
-!! Distributed under LGPLv3 License.
-!! 
 module FHDICT
     !! A Key-Value Dictionary implemented with a hashtable and singly-linked lists.
     !!
-    !! Currently supports mapping integer keys to:
-    !!  1) a variable length integer array (integer, dimension(:), allocatable)
-    !!  2) an integer value                (integer)
+    !! Currently supports mapping integer(kind=ip) keys to:
+    !!  1) a variable length integer(kind=ip) array (integer(kind=ip), dimension(:), allocatable)
+    !!  2) an integer(kind=ip) value                (integer(kind=ip))
     !!  3) a variable length real array    (real, dimension(:), allocatable)
     !!
     !! BASIC USAGE:
@@ -21,14 +18,14 @@ module FHDICT
     private
     public :: hashtable
     
-    integer, dimension(8), parameter :: primes = [101, 503, 5001, 50021, 500009, &
+    integer(kind=ip), dimension(8), parameter :: primes = [101, 503, 5001, 50021, 500009, &
                                                   1000003, 1500007, 2000003]
     
     type sllist
         type(sllist), pointer                   :: child => null()
-        integer, allocatable                    :: key
-        integer, allocatable                    :: ival
-        integer, allocatable                    :: val(:)
+        integer(kind=ip), allocatable                    :: key
+        integer(kind=ip), allocatable                    :: ival
+        integer(kind=ip), allocatable                    :: val(:)
         real(wp), allocatable                    :: rvals(:)
     contains
         procedure, pass :: put_sll              !!
@@ -42,8 +39,8 @@ module FHDICT
     
     type hashtable
         type(sllist), dimension(:), allocatable :: tbl
-        integer                                 :: capacity = 0
-        integer                                 :: count = 0
+        integer(kind=ip)                                 :: capacity = 0
+        integer(kind=ip)                                 :: count = 0
         logical                                 :: is_init = .false.
         logical                                 :: is_mutable = .true.
     contains
@@ -65,12 +62,12 @@ contains
     
     recursive subroutine put_sll(list, key, val, ival, rvals, mutable, rc)
         class(sllist), intent(inout)      :: list
-        integer, intent(in)               :: key
-        integer, intent(in), optional     :: val(:)
-        integer, intent(in), optional     :: ival
+        integer(kind=ip), intent(in)               :: key
+        integer(kind=ip), intent(in), optional     :: val(:)
+        integer(kind=ip), intent(in), optional     :: ival
         real(wp), intent(in), optional    :: rvals(:)
         logical, intent(in)               :: mutable
-        integer, intent(out)              :: rc
+        integer(kind=ip), intent(out)              :: rc
         
         rc = 0
         
@@ -134,11 +131,11 @@ contains
     
     recursive subroutine get_sll(list, key, val, ival, rvals, rc)
         class(sllist), intent(in)                   :: list
-        integer, intent(in)                         :: key
-        integer, intent(out), allocatable, optional :: val(:)
-        integer, intent(out), optional              :: ival
+        integer(kind=ip), intent(in)                         :: key
+        integer(kind=ip), intent(out), allocatable, optional :: val(:)
+        integer(kind=ip), intent(out), optional              :: ival
         real(wp), intent(out), allocatable, optional :: rvals(:)
-        integer, intent(out)                        :: rc
+        integer(kind=ip), intent(out)                        :: rc
         
         rc = 0
         if ((allocated(list%key)) .and. (list%key == key)) then
@@ -170,8 +167,8 @@ contains
     
     recursive subroutine has_key_sll(list, key, rc)
         class(sllist), intent(in)                       :: list
-        integer, intent(in)                             :: key
-        integer, intent(out)                            :: rc
+        integer(kind=ip), intent(in)                             :: key
+        integer(kind=ip), intent(out)                            :: rc
         
         if ((allocated(list%key)) .and. (list%key == key)) then
             rc = 0
@@ -186,8 +183,8 @@ contains
     
     recursive subroutine keys_sll(list, k, n)
         class(sllist), intent(in)                       :: list
-        integer, dimension(:), intent(inout)            :: k
-        integer, intent(out)                            :: n
+        integer(kind=ip), dimension(:), intent(inout)            :: k
+        integer(kind=ip), intent(out)                            :: n
         
         if (allocated(list%key)) then
             n = n+1
@@ -201,7 +198,7 @@ contains
     
     recursive subroutine free_sll(list, rc)
         class(sllist), intent(inout)    :: list
-        integer, intent(out)            :: rc
+        integer(kind=ip), intent(out)            :: rc
         
         if (associated(list%child)) then
             call free_sll(list%child,rc)
@@ -216,7 +213,7 @@ contains
     
     recursive subroutine count_sll(list, n)
         class(sllist), intent(in)       :: list
-        integer, intent(inout)          :: n
+        integer(kind=ip), intent(inout)          :: n
         
         if (associated(list%child)) then
             n = n+1
@@ -229,18 +226,18 @@ contains
 !! DICTIONARY/HASHTABLE METHODS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     
-    integer function hash(dict, key) result(out)
+    integer(kind=ip) function hash(dict, key) result(out)
         class(hashtable), intent(in)        :: dict
-        integer, intent(in)                 :: key
+        integer(kind=ip), intent(in)                 :: key
         out = mod(key, dict%capacity) + 1
     end function hash
     
     
     subroutine init(dict, nitems, is_mutable)
         class(hashtable), intent(inout)     :: dict
-        integer, optional, intent(in)       :: nitems
+        integer(kind=ip), optional, intent(in)       :: nitems
         logical, optional, intent(in)       :: is_mutable
-        integer                             :: i, sz
+        integer(kind=ip)                             :: i, sz
         
         if (allocated(dict%tbl)) deallocate(dict%tbl)
         if (present(nitems)) then
@@ -271,9 +268,9 @@ contains
     
     logical function has_key(dict, key) result(found)
         class(hashtable), intent(in)        :: dict
-        integer, intent(in)                 :: key
-        integer                             :: hash, rc
-        integer, dimension(:), allocatable  :: out
+        integer(kind=ip), intent(in)                 :: key
+        integer(kind=ip)                             :: hash, rc
+        integer(kind=ip), dimension(:), allocatable  :: out
         
         found = .false.
         if (dict%count > 0) then
@@ -290,13 +287,13 @@ contains
     
     subroutine put(dict, key, val, ival, rvals, rc)
         class(hashtable), intent(inout)     :: dict
-        integer, intent(in)                 :: key
-        integer, intent(in), optional       :: val(:)
-        integer, intent(in), optional       :: ival
-        real(wp), intent(in), optional       :: rvals(:)
-        integer, optional, intent(out)      :: rc
-        integer                             :: hash
-        integer                             :: ret
+        integer(kind=ip), intent(in)                 :: key
+        integer(kind=ip), intent(in), optional       :: val(:)
+        integer(kind=ip), intent(in), optional       :: ival
+        real(wp), intent(in), optional      :: rvals(:)
+        integer(kind=ip), optional, intent(out)      :: rc
+        integer(kind=ip)                             :: hash
+        integer(kind=ip)                             :: ret
         
         ret = 0
         hash = dict%hash(key)
@@ -319,13 +316,13 @@ contains
     
     subroutine get(dict, key, val, ival, rvals, rc)
         class(hashtable), intent(in)        :: dict
-        integer, intent(in)                 :: key
-        integer, intent(out), allocatable, optional :: val(:)
-        integer, intent(out), optional      :: ival
+        integer(kind=ip), intent(in)                 :: key
+        integer(kind=ip), intent(out), allocatable, optional :: val(:)
+        integer(kind=ip), intent(out), optional      :: ival
         real(wp), intent(out), allocatable, optional :: rvals(:)
-        integer, intent(out), optional      :: rc
-        integer                             :: hash
-        integer                             :: ret
+        integer(kind=ip), intent(out), optional      :: rc
+        integer(kind=ip)                             :: hash
+        integer(kind=ip)                             :: ret
         
         ret = 0
         hash = dict%hash(key)
@@ -347,10 +344,10 @@ contains
     
     subroutine keys(dict, k, rc)
         class(hashtable), intent(in)        :: dict
-        integer, allocatable, intent(out)   :: k(:)
-        integer, optional, intent(out)      :: rc
-        integer                             :: i, n, hash
-        integer                             :: ret
+        integer(kind=ip), allocatable, intent(out)   :: k(:)
+        integer(kind=ip), optional, intent(out)      :: rc
+        integer(kind=ip)                             :: i, n, hash
+        integer(kind=ip)                             :: ret
         
         ret = 0
         if (dict%count > 0) then
@@ -371,11 +368,11 @@ contains
     subroutine del(dict, key, rc)
         class(hashtable), intent(inout)     :: dict
         ! type(hashtable), intent(inout)     :: dict
-        integer, intent(in)                 :: key
-        integer, optional, intent(out)      :: rc
-        integer                             :: hash
-        integer                             :: ret, n, nkey, i, tempkey
-        integer, allocatable                :: child_keys(:), val(:)
+        integer(kind=ip), intent(in)                 :: key
+        integer(kind=ip), optional, intent(out)      :: rc
+        integer(kind=ip)                             :: hash
+        integer(kind=ip)                             :: ret, n, nkey, i, tempkey
+        integer(kind=ip), allocatable                :: child_keys(:), val(:)
         type(hashtable)                     :: temp
         
         ret = 0
@@ -441,8 +438,8 @@ contains
     
     subroutine free(dict)
         class(hashtable), intent(inout)     :: dict
-        integer                             :: i, lb, ub
-        integer                             :: ret
+        integer(kind=ip)                             :: i, lb, ub
+        integer(kind=ip)                             :: ret
         
         ret = 0
         lb = lbound(dict%tbl,dim=1)
