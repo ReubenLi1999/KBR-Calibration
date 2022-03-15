@@ -1,0 +1,11 @@
+        !COMPILER-GENERATED INTERFACE MODULE: Wed Dec 29 21:44:50 2021
+        MODULE FSIZER3__genmod
+          INTERFACE 
+            SUBROUTINE FSIZER3(NRECL,KSIZE,NRFILE,NAMFIL)
+              INTEGER(KIND=4) :: NRECL
+              INTEGER(KIND=4) :: KSIZE
+              INTEGER(KIND=4) :: NRFILE
+              CHARACTER(LEN=80) :: NAMFIL
+            END SUBROUTINE FSIZER3
+          END INTERFACE 
+        END MODULE FSIZER3__genmod

@@ -1,0 +1,29 @@
+最后修改时间：2021-03-22
+
+程序功能：
+	用于计算第三体的引力摄动（日、月）。
+
+主程序：
+	ThirdBodyPerturbation_M06(Number_data, P_sun, P_moon, position, acc)
+
+变量声明：
+	Number_data：	数据长度
+	P_sun：			太阳的位置矢量(GCRS)(x,y,z)					单位：m
+	P_sun：			月球的位置矢量(GCRS)(x,y,z)					单位：m
+	position：		计算点的位置矢量(GCRS)(x,y,z)				单位：m
+	acc：			计算的得到的加速度(GCRS)(accx,accy,accz)	单位：m/s^2
+
+
+	---------------------------------------------------------------------
+    integer,  intent(in   )         :: Number_data
+    real,     intent(in   )         :: P_sun(1:Number_data, 3)
+    real,     intent(in   )         :: P_moon(1:Number_data, 3)
+    real,     intent(in   )         :: position(1:Number_data, 3)
+    real,     intent(  out)         :: acc(1:Number_data, 3)
+	---------------------------------------------------------------------
+	
+	
+备注：
+	程序中整型变量的精度（kind值）默认为4，实型变量的精度（kind值）默认为8
+	如果需要更高的精度，可以在‘module_M06.f90’文件中修改。
+

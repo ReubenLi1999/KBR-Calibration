@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<root>
+
+	<FileHeader>
+
+		<OutProcessID>0000000000000001</OutProcessID>   
+
+		<ProcessID>0000000000000001</ProcessID>
+
+		<TaskType>DB-JH-SXZ</TaskType>
+
+		<TaskTime>2017101120</TaskTime>
+
+		<SatelliteID>TH04-01</SatelliteID><!--卫星名称：本地下单时需调度界面选择-->
+
+		<CalibrationID>VKB</CalibrationID><!--标定类型：VCM：质心偏差，VKB：KBR定标，VAC：加速度计定标，VIP：星间指向定标，QCP：星敏感器定标-->
+
+		<CalibrationDataTime>2020-09-17</CalibrationDataTime><!--定标数据观测时间-->
+
+        <MirrorManeuver>0<MirrorManeuver>
+
+		<ManeuverID-1>1</ManeuverID-1>
+
+		<ManeuverStart-1>2029-09-18 11:09:42</ManeuverStart-1>
+
+		<ManeuverDuration-1>3000<ManeuverDuration-1>
+
+		<ManeuverID-2>2</ManeuverID-2>
+		
+		<ManeuverStart-2>2029-09-18 04:54:42</ManeuverStart-2>
+
+		<ManeuverDuration-2>3000<ManeuverDuration-2>
+
+		<ManeuverID-3>3</ManeuverID-3>
+		
+		<ManeuverStart-3>2029-09-29 10:44:42</ManeuverStart-3>
+
+		<ManeuverDuration-3>3000<ManeuverDuration-3>
+
+		<ManeuverID-4>4</ManeuverID-4>
+		
+		<ManeuverStart-4>2029-09-29 04:19:42</ManeuverStart-4>
+
+		<ManeuverDuration-4>3000<ManeuverDuration-4>
+
+		<SatelliteType>0</SatelliteType><!--卫星编号：0：A星:1：B星-->
+
+		<ProductLevel>1B</ProductLevel><!--产品级别：本地下单时需调度界面选择-->
+
+		<Ver>00</Ver>
+
+		<ConfigPath>D:\lhsProgrammes\Projects_2021\phase_centre_validation\config\</ConfigPath><!--定标流程配置文件路径-->
+
+	</FileHeader>
+
+	<FileBody>
+
+		<InputFileInfoList>
+
+			<InputFileInfo>
+
+				<KBR1BFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</KBR1BFile><!--1B级KBR观测数据路径-->
+
+				<ACC1B-AFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</ACC1B-AFile><!--1B级加速度计观测数据路径-->
+
+				<ACC1B-BFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</ACC1B-BFile><!--1B级加速度计观测数据路径-->
+
+				<SCA1B-AFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</SCA1B-AFile><!--1B级星敏感器观测数据路径-->
+
+				<SCA1B-BFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</SCA1B-BFile><!--1B级星敏感器观测数据路径-->
+
+				<THA1B-AFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</THA1B-AFile><!--1B级姿控推力器数据路径-->
+				
+				<THA1B-BFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</THA1B-BFile><!--1B级姿控推力器数据路径-->
+				
+				<ROI1B-AFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</ROI1B-AFile><!--1B级简化动力学轨道产品数据路径-->
+				
+				<ROI1B-BFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</ROI1B-BFile><!--1B级简化动力学轨道产品数据路径-->
+				
+				<KOE1B-AFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</KOE1B-AFile><!--1B级简化动力学轨道产品数据路径-->
+				
+				<KOE1B-BFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</KOE1B-BFile><!--1B级简化动力学轨道产品数据路径-->
+
+				<GKB1B-AFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c</GKB1B-AFile><!--1B级KBR地面标定数据路径-->
+				
+				<GKB1B-BFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c</GKB1B-BFile><!--1B级KBR地面标定数据路径-->
+
+				<VAC1B-AFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</VAC1B-AFile><!--1B级加速度计观测数据路径-->
+
+				<VAC1B-BFile>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c,D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_d</VAC1B-BFile><!--1B级加速度计观测数据路径-->
+
+			</InputFileInfo>
+
+		</InputFileInfoList>
+		
+		<ExternalFileList><!--星历，钟差等辅助文件-->
+			
+			<GSM>D:\lhsProgrammes\Projects_2021\phase_centre_validation\input\gfo_calibra_c</GSM>
+		
+		</ExternalFileList>
+
+		<OutputDir>D:\lhsProgrammes\Projects_2021\phase_centre_validation\output</OutputDir>
+	
+	</FileBody>
+
+</root>
